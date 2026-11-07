@@ -1,0 +1,11 @@
+{
+  "2026-12-01": [
+    {"start": "09:00", "type": "PREMIUM", "adults": 25},
+    {"start": "09:00", "type": "PREMIUM", "adults": 20, "children": 5},
+    {"start": "09:00", "type": "PREMIUM_CT", "adults": 12, "zone": "A", "pinned": true},
+    {"start": "09:30", "type": "CLASSIC", "adults": 8},
+    {"start": "11:00", "type": "PREMIUM", "adults": 13},
+    {"start": "13:00", "type": "PREMIUM_CT", "adults": 25},
+    {"start": "13:00", "type": "PREMIUM_CT", "adults": 18}
+  ]
+}
