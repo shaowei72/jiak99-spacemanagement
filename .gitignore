@@ -19,3 +19,6 @@ __pycache__/
 .hypothesis/
 .coverage
 htmlcov/
+
+# Local dev database
+jiak99-dev.db

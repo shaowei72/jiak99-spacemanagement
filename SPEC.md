@@ -235,7 +235,7 @@ Paths below are relative to `/api`. Path parameters are written `:id` here; in F
 
 | Method | Path | Role | Purpose |
 | --- | --- | --- | --- |
-| POST | `/enquiries/check` | Sales | Body: date, start, type, adults, children → `checkEnquiry` result. Stores nothing |
+| GET | `/enquiries/check?date&start&type&adults&children` | Sales | → `checkEnquiry` result. Stores nothing; response sent with `Cache-Control: no-store` |
 | POST | `/bookings` | Sales | Book the request or an alternative. Re-runs the check **inside a transaction** with a per-date lock; returns 409 with a fresh check if it no longer fits |
 | PATCH | `/bookings/:id` | Sales | Edit (re-checks) |
 | POST | `/bookings/:id/cancel` | Sales | Cancel |

@@ -33,3 +33,9 @@
 | 2026-11-07 | Alternatives never suggest a downgrade: lower level or losing the Chef's Table (so Classic + CT ↔ Premium both count) | Business decision (owner); strict reading chosen for the one ambiguous pair |
 | 2026-11-07 | Acceptance test T5 no longer expects "19:30 Classic" as an alternative | It is a downgrade from Premium |
 | 2026-11-07 | All 4 zones may run concurrently with any mix of ticket types; no Chef's Table capacity limit | Business decision (owner) |
+| 2026-11-07 | Sessions point to their booking (`sessions.booking_id`) instead of `Booking.sessionId` + `groupRef` | A booking over 25 has several sessions; one foreign key says that directly |
+| 2026-11-07 | Groups over 25 are split with adults filling zones first (30A 10C → 25A + 5A 10C) | Spec silent; any split is valid since everyone counts as 1 |
+| 2026-11-07 | Dev sign-in stand-in: `X-User` / `X-Role` headers until Entra ID sign-in is added | Lets Milestones 2–3 be built and tested without a tenant; routes won't change |
+| 2026-11-07 | Booking lock: PostgreSQL `pg_advisory_xact_lock(YYYYMMDD)`; SQLite uses an in-process lock | SQLite is for single-process local dev only; the PostgreSQL lock works across processes |
+| 2026-11-07 | Every booking creates a new customer row (no matching of repeat customers yet) | Keeps M2 simple; matching can be added when the Outlook import shows real data |
+| 2026-11-07 | Enquiry check is `GET /api/enquiries/check?…` instead of POST | It reads and stores nothing; inputs are 5 simple values; links can be shared. Sent with `Cache-Control: no-store` so a stale answer is never reused |
