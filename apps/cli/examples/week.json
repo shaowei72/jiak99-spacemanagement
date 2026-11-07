@@ -1,0 +1,104 @@
+{
+  "_about": "Scenario week for testing. Use with --today 2026-12-01 (a Tuesday). See scenarios.json.",
+
+  "2026-12-01": {
+    "_purpose": "Tue, quiet day: two lunch sessions with seats left. Joins, dead-gap warnings, small groups.",
+    "sessions": [
+      {"start": "12:00", "type": "CLASSIC", "adults": 6, "children": 2},
+      {"start": "12:00", "type": "PREMIUM", "adults": 14}
+    ]
+  },
+
+  "2026-12-02": {
+    "_purpose": "Wed, lunch peak: all 4 zones busy around 12:00, dinner session later. Sales must move people.",
+    "sessions": [
+      {"start": "11:00", "type": "PREMIUM_CT", "adults": 25},
+      {"start": "11:00", "type": "PREMIUM_CT", "adults": 20},
+      {"start": "11:30", "type": "PREMIUM", "adults": 25},
+      {"start": "12:00", "type": "CLASSIC", "adults": 18},
+      {"start": "18:00", "type": "PREMIUM", "adults": 22}
+    ]
+  },
+
+  "2026-12-03": {
+    "_purpose": "Thu, fragmented: sessions scattered through the day. Some requests fit snugly, others leave unsellable gaps.",
+    "sessions": [
+      {"start": "09:00", "type": "CLASSIC", "adults": 12},
+      {"start": "10:30", "type": "PREMIUM", "adults": 20},
+      {"start": "13:00", "type": "CLASSIC", "adults": 10},
+      {"start": "14:00", "type": "PREMIUM", "adults": 16},
+      {"start": "16:00", "type": "PREMIUM_CT", "adults": 25}
+    ]
+  },
+
+  "2026-12-04": {
+    "_purpose": "Fri, ops has locked the plan: every session pinned to a zone. Free time exists but in the wrong places.",
+    "sessions": [
+      {"start": "09:00", "type": "PREMIUM", "adults": 20, "zone": "A", "pinned": true},
+      {"start": "12:00", "type": "PREMIUM_CT", "adults": 25, "zone": "A", "pinned": true},
+      {"start": "10:00", "type": "PREMIUM", "adults": 15, "zone": "B", "pinned": true},
+      {"start": "13:00", "type": "PREMIUM_CT", "adults": 18, "zone": "B", "pinned": true},
+      {"start": "09:00", "type": "PREMIUM_CT", "adults": 25, "zone": "C", "pinned": true},
+      {"start": "12:00", "type": "PREMIUM_CT", "adults": 25, "zone": "C", "pinned": true},
+      {"start": "15:00", "type": "PREMIUM_CT", "adults": 20, "zone": "C", "pinned": true},
+      {"start": "09:00", "type": "PREMIUM_CT", "adults": 25, "zone": "D", "pinned": true},
+      {"start": "12:00", "type": "PREMIUM_CT", "adults": 25, "zone": "D", "pinned": true},
+      {"start": "15:00", "type": "PREMIUM_CT", "adults": 24, "zone": "D", "pinned": true}
+    ]
+  },
+
+  "2026-12-05": {
+    "_purpose": "Sat, sold out: every zone back to back from 09:00 to 21:00. Only joins into sessions with seats left.",
+    "sessions": [
+      {"start": "09:00", "type": "PREMIUM_CT", "adults": 25},
+      {"start": "12:00", "type": "PREMIUM_CT", "adults": 22},
+      {"start": "15:00", "type": "PREMIUM_CT", "adults": 25},
+      {"start": "18:00", "type": "PREMIUM_CT", "adults": 25},
+
+      {"start": "09:00", "type": "PREMIUM", "adults": 25},
+      {"start": "11:00", "type": "PREMIUM", "adults": 25},
+      {"start": "13:00", "type": "PREMIUM", "adults": 10, "children": 5},
+      {"start": "15:00", "type": "PREMIUM", "adults": 25},
+      {"start": "17:00", "type": "PREMIUM", "adults": 25},
+      {"start": "19:00", "type": "PREMIUM", "adults": 25},
+
+      {"start": "09:00", "type": "CLASSIC", "adults": 25},
+      {"start": "10:30", "type": "CLASSIC", "adults": 25},
+      {"start": "12:00", "type": "CLASSIC", "adults": 25},
+      {"start": "13:30", "type": "CLASSIC", "adults": 25},
+      {"start": "15:00", "type": "CLASSIC", "adults": 20},
+      {"start": "16:30", "type": "CLASSIC", "adults": 25},
+      {"start": "18:00", "type": "CLASSIC", "adults": 25},
+      {"start": "19:30", "type": "CLASSIC", "adults": 25},
+
+      {"start": "09:00", "type": "PREMIUM", "adults": 25},
+      {"start": "11:00", "type": "PREMIUM_CT", "adults": 25},
+      {"start": "14:00", "type": "PREMIUM", "adults": 25},
+      {"start": "16:00", "type": "PREMIUM_CT", "adults": 25},
+      {"start": "19:00", "type": "PREMIUM", "adults": 25}
+    ]
+  },
+
+  "2026-12-06": {
+    "_purpose": "Sun, big groups: a 60-person company already split over three 10:00 zones. Splits, exact fills, groups too big.",
+    "sessions": [
+      {"start": "10:00", "type": "PREMIUM", "adults": 25},
+      {"start": "10:00", "type": "PREMIUM", "adults": 25},
+      {"start": "10:00", "type": "PREMIUM", "adults": 10},
+      {"start": "14:00", "type": "CLASSIC", "adults": 20}
+    ]
+  },
+
+  "2026-12-07": {
+    "_purpose": "Mon, private event 14:00-17:00 blocks the whole venue.",
+    "blackouts": [{"start": "14:00", "end": "17:00"}],
+    "sessions": [
+      {"start": "10:00", "type": "CLASSIC", "adults": 10}
+    ]
+  },
+
+  "2026-12-08": {
+    "_purpose": "Tue, closed all day (staff training).",
+    "closed": true
+  }
+}
