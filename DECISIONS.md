@@ -52,3 +52,8 @@
 | 2026-11-08 | `/calendar` also returns bookings, people, zone-hour use, closed and locked per day (SPEC asks only seat-hour use) | The calendar page needs them for tooltips and greying out closed days; costs no extra queries per day |
 | 2026-11-08 | `/calendar` skips the zone plan (no dead-gap figure) and allows at most 366 days per request | 180 zone plans would break the < 1 s target; dead gaps belong to the single-day view |
 | 2026-11-08 | `/availability` takes `n` from 1 to 100 and returns the ticket labels and lengths with the board | 100 = all 4 zones full; pages then never hard-code labels |
+| 2026-11-08 | Allocated zones are a suggestion: unpinned sessions on an unlocked day may still move when the plan changes | Keeps zones flexible (CLAUDE.md); only pins and the day lock freeze a zone, as SPEC §3 lists |
+| 2026-11-08 | Lock first allocates, then freezes every session; sessions booked after the lock are frozen at the next allocate | Every session of a locked day ends up with a fixed zone |
+| 2026-11-08 | Pinning re-plans and stores zones for the other movable sessions; refused (409) if no valid plan is left | Stored zones never show two groups in one zone at the same time |
+| 2026-11-08 | `PATCH /sessions/:id/pin` body: `{"zone": "B"}`, `{}` (current zone) or `{"pinned": false}`; plan actions return the day view | One route for pin/unpin as SPEC lists; the page needs the whole day as other groups may move |
+| 2026-11-08 | Zone-calendar write on lock deferred to Milestone 4 | Needs the Graph gateway (`packages/graph`), built in Milestone 4 |

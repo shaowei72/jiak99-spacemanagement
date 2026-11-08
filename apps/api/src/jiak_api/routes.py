@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session, selectinload
 from engine import Enquiry, assign, day_metrics, days_between, is_valid_date
 from engine.model import day_of
 from engine.text import format_time
-from jiak_api import bookings, models, overview
+from jiak_api import bookings, models, overview, plan
 from jiak_api.auth import User, current_user, require
 from jiak_api.clock import Now
 from jiak_api.db import Database
@@ -30,6 +30,7 @@ from jiak_api.schemas import (
     DayOut,
     EnquiryIn,
     MetricsOut,
+    PinIn,
     parse_time,
 )
 
@@ -278,6 +279,69 @@ def get_calendar(
 @router.get("/days/{date}")
 def get_day(date: DateText, db: DbDep, _user: AnyUser) -> DayOut:
     """Everything about one date: bookings, sessions, the best zone plan, and metrics."""
+    return day_view(db, real_date(date, "date"))
+
+
+@router.post("/days/{date}/allocate")
+def allocate_day(date: DateText, database: DatabaseDep, db: DbDep, user: OperationsUser) -> DayOut:
+    """Give every movable session its zone from the best plan. Pinned and locked ones stay put.
+
+    Unpinned zones are still a suggestion: they may change when later bookings need it.
+    """
+    date = real_date(date, "date")
+    try:
+        plan.allocate_day(database, db, date, actor=user.name)
+    except plan.PlanConflict as error:
+        raise HTTPException(status_code=409, detail=str(error)) from None
+    return day_view(db, date)
+
+
+@router.post("/days/{date}/lock")
+def lock_day(date: DateText, database: DatabaseDep, db: DbDep, user: OperationsUser) -> DayOut:
+    """Allocate, then freeze every zone of the day.
+
+    Bookings made later start without a zone; the next allocate gives them one and freezes it.
+    """
+    date = real_date(date, "date")
+    try:
+        plan.lock_day(database, db, date, actor=user.name)
+    except plan.PlanConflict as error:
+        raise HTTPException(status_code=409, detail=str(error)) from None
+    return day_view(db, date)
+
+
+@router.post("/days/{date}/unlock")
+def unlock_day(date: DateText, database: DatabaseDep, db: DbDep, user: OperationsUser) -> DayOut:
+    """Unfreeze the day. Zones and pins are kept; unpinned sessions may move again."""
+    date = real_date(date, "date")
+    try:
+        plan.unlock_day(database, db, date, actor=user.name)
+    except plan.PlanConflict as error:
+        raise HTTPException(status_code=409, detail=str(error)) from None
+    return day_view(db, date)
+
+
+@router.patch("/sessions/{session_id}/pin")
+def pin_session(
+    session_id: str, body: PinIn, database: DatabaseDep, db: DbDep, user: OperationsUser
+) -> DayOut:
+    """Pin a group to a zone, or unpin it. Returns the whole day, as other groups may move.
+
+    {"zone": "B"} pins to B · {} pins to the current zone · {"pinned": false} unpins.
+    """
+    try:
+        date = plan.pin_session(
+            database, db, session_id, pinned=body.pinned, zone=body.zone, actor=user.name
+        )
+    except plan.SessionNotFound:
+        raise HTTPException(status_code=404, detail="Session not found.") from None
+    except plan.PlanConflict as error:
+        raise HTTPException(status_code=409, detail=str(error)) from None
+    return day_view(db, date)
+
+
+def day_view(db: Session, date: str) -> DayOut:
+    """The day view used by GET /days/:date and returned by every plan change."""
     settings = load_settings(db)
     day = day_of(load_schedule(db, date, date), date)
     plan = assign(day.sessions, settings, blackouts=day.blackouts)
@@ -288,6 +352,7 @@ def get_day(date: DateText, db: DbDep, _user: AnyUser) -> DayOut:
         .where(models.Booking.date == date, models.Booking.status != "cancelled")
         .options(selectinload(models.Booking.sessions), selectinload(models.Booking.customer))
         .order_by(models.Booking.start, models.Booking.created_at)
+        .execution_options(populate_existing=True)  # show the zones just stored
     )
     return DayOut(
         date=date,

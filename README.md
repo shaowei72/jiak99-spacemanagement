@@ -75,6 +75,9 @@ Read-only views to try in the browser once the server runs (after `uv run seed`)
 - http://127.0.0.1:8000/api/calendar?from=2026-12-01&to=2027-05-31 — per-day use for the 6-month calendar
 - http://127.0.0.1:8000/api/days/2026-12-01 — one day: bookings, zone plan and metrics
 
+Changes (book, edit, cancel, no-show, allocate, lock/unlock, pin) are easiest to try in `/docs`. Leave `x-role`
+empty to act as Operations, or type `Sales`.
+
 ### Sample data
 
 The API only sees bookings stored in the database, not the JSON example days that `uv run check` reads. To give

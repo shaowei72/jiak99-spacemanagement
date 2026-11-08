@@ -67,6 +67,16 @@ class BookingPatchIn(ApiModel):
     customer: CustomerIn | None = None
 
 
+class PinIn(ApiModel):
+    """PATCH /sessions/:id/pin body.
+
+    {"zone": "B"} pins to zone B · {} pins to the current zone · {"pinned": false} unpins.
+    """
+
+    pinned: bool = True
+    zone: Literal["A", "B", "C", "D"] | None = None
+
+
 # --- responses -------------------------------------------------------------------------------
 
 
