@@ -76,15 +76,16 @@ def test_book_form_works_without_javascript(client: TestClient) -> None:
     assert 'name="name"' in page
 
 
-def test_book_form_for_a_slot_that_is_now_full_shows_the_check_instead(
-    client: TestClient,
-) -> None:
-    fill_slot(client, "10:00")
-    page = client.get(
-        "/enquiry/book?date=2026-12-01&start=10:00&type=PREMIUM&adults=10", headers=HTMX
-    ).text
-    assert "Not possible" in page
-    assert 'name="name"' not in page
+def test_book_button_on_an_out_of_date_check_says_no_longer_fits(client: TestClient) -> None:
+    query = "date=2026-12-01&start=10:00&type=PREMIUM&adults=10"
+    assert "Book this" in client.get(f"/enquiry?{query}", headers=HTMX).text
+    fill_slot(client, "10:00")  # the slot fills up while the result is on screen
+    page = client.get(f"/enquiry/book?{query}", headers=HTMX).text
+    assert "No longer fits" in page
+    assert "Not possible" not in page  # that headline is only for the Check button
+    assert "Nothing was booked" in page
+    assert "/enquiry/book?" in page  # alternatives can be booked straight away
+    assert 'name="name"' not in page  # no customer form
 
 
 # --- booking ---------------------------------------------------------------------------------
@@ -136,6 +137,7 @@ def test_no_longer_fits_shows_why_and_fresh_alternatives(client: TestClient) -> 
     response = client.post("/enquiry/book", data=CUSTOMER, headers=HTMX)
     assert response.status_code == 409
     assert "No longer fits" in response.text
+    assert "Not possible" not in response.text
     assert "All 4 zones are in use" in response.text
     assert "/enquiry/book?" in response.text  # alternatives can be booked straight away
     assert bookings_on(client, "2026-12-01") == 4  # only the 4 that filled the slot

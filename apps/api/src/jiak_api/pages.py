@@ -200,16 +200,20 @@ def book_form_page(
 ) -> Response:
     """After a Book button: the option is checked again, then the customer form is shown.
 
-    If the option doesn't fit (any more), the check result is shown instead of the form.
+    If the option doesn't fit any more (the result on screen was out of date), the page says
+    "No longer fits" with fresh alternatives instead of showing the form, just like a Book
+    press on an open form that loses the race.
     """
     form = enquiry_form(now.today, date, start, type, adults, children)
     enquiry, errors = form_errors(form)
     if enquiry is None:
         return render(request, "_check_result.html", {"form": form, "errors": errors})
     check = CheckOut.from_engine(bookings.check(db, to_enquiry(enquiry), now))
+    context: dict[str, Any]
     if check.verdict == "NOT_POSSIBLE":
-        return render(request, "_check_result.html", {"form": form, "check": check})
-    context: dict[str, Any] = {
+        context = {"form": form, "check": check, "no_longer_fits": True}
+        return render(request, "_check_result.html", context)
+    context = {
         "form": form,
         "check": check,
         "customer": EMPTY_CUSTOMER,

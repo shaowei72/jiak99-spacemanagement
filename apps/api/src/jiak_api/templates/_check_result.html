@@ -16,7 +16,7 @@
     {{ check.placement.new_sessions | join(" + ") }} people.</p>
   {% endif %}
   {% if no_longer_fits %}
-  <p class="detail">Someone else booked meanwhile. Nothing was booked; offer an alternative.</p>
+  <p class="detail">It filled up after the check. Nothing was booked; offer an alternative.</p>
   {% elif check.verdict != "NOT_POSSIBLE" %}
   {% set url = book_url(form.date, form.start, form.type, form.adults, form.children) %}
   <p class="actions">

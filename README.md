@@ -71,8 +71,8 @@ uv run uvicorn jiak_api.main:app --reload        # dev server; try the routes at
 
 Web pages (Milestone 3, in progress): http://127.0.0.1:8000/ opens the **Enquiry check**. A good or costly
 verdict and each alternative has a **Book** button: fill in the customer's name (phone, email, company and notes
-are optional) and press Book. If someone else took the slot meanwhile, the page says it no longer fits and shows
-fresh alternatives. Each booking has its own page, `/bookings/<id>`.
+are optional) and press Book. If the slot filled up after the check (when pressing either Book button), the page
+says **No longer fits** and shows fresh alternatives; "Not possible" is only the answer to Check. Each booking has its own page, `/bookings/<id>`.
 
 Read-only views to try in the browser once the server runs (after `uv run seed`):
 

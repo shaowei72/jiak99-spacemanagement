@@ -73,3 +73,4 @@
 | 2026-11-08 | The Book form lets sales adjust adults and children before booking; the date, time and ticket come from the button | Headcounts often change during the call; the server re-checks everything on submit anyway |
 | 2026-11-08 | HTMX is configured (`htmx-config` meta) to show 409 "no longer fits" and 422 form mistakes; other errors still aren't swapped in | Both carry a message the user needs; keeps the real HTTP status codes |
 | 2026-11-08 | Empty phone, email or company fields are stored as "not given" (null), not as empty text | Same as leaving them out in the JSON API |
+| 2026-11-08 | A Book button on an out-of-date result says "No longer fits" (like a lost race on the open form), not "Not possible" | To sales both mean "it fitted when I looked, now it doesn't"; "Not possible" stays the answer to Check (owner's call) |
