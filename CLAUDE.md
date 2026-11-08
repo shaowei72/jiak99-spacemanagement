@@ -31,5 +31,6 @@ Table, Premium, Premium + Chef's Table; 1.5–3 h), Outlook (Microsoft 365) as t
   — try an enquiry (defaults: `apps/cli/examples/busy-day.json` and the operations board, zones A–D)
 - `uv run scenarios [--show S11]` — run the scenario week (`apps/cli/examples/SCENARIOS.md`)
 - `uv run ruff check . && uv run ruff format --check . && uv run mypy` — lint, format, types
+- `uv run seed [busy-day | week | FILE] [--replace]` — load an example day file into the database
 - `docker compose up` — api (incl. web pages) + PostgreSQL
 - `uv run import-outlook --dry-run` — Milestone 4 (console script defined in `apps/api`)

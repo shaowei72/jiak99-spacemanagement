@@ -69,6 +69,21 @@ uv run alembic upgrade head                      # create or update the tables (
 uv run uvicorn jiak_api.main:app --reload        # dev server; try the routes at http://127.0.0.1:8000/docs
 ```
 
+### Sample data
+
+The API only sees bookings stored in the database, not the JSON example days that `uv run check` reads. To give
+the API the same data, load a day file into the database:
+
+```
+uv run seed                  # busy-day.json: then the API answers exactly like `uv run check`
+uv run seed week             # the scenario week (week.json), incl. a closed day and a blackout
+uv run seed week --replace   # wipe those dates first (also removes real bookings on them)
+```
+
+Each session becomes one booking ("Sample group N"), keeping its zone and pin. Seeding refuses dates that already
+have bookings unless you pass `--replace`, and refuses any non-SQLite database unless you pass `--yes`. To start
+completely fresh, stop the server, delete `jiak99-dev.db` and run `uv run alembic upgrade head`.
+
 After changing `models.py`:
 
 ```

@@ -47,3 +47,5 @@
 | 2026-11-08 | Audit snapshots include the customer details | So customer-only edits are recorded too |
 | 2026-11-08 | `uv run check` prints a zone board (`--board operations`, default) as well as the sales board (`--board sales`) | Zones A–D are what ops thinks in; it shows the engine's current best plan with the request added, so "costly" gaps are visible |
 | 2026-11-08 | Short labels are CHE, CHE+CT, PHE, PHE+CT (`TICKET_SHORT_NAMES`); codes unchanged | Business feedback; codes stay stable so stored bookings are unaffected; the CLI also accepts labels as input |
+| 2026-11-08 | Seed script (`uv run seed`) loads the CLI day files, one booking per session; `apps/api` depends on `jiak-cli` for the file reader | One day-file format for CLI and database; a test checks all 29 scenarios answer the same from the database |
+| 2026-11-08 | Seeding refuses booked dates without `--replace`, and non-SQLite databases without `--yes` | Sample data must never overwrite real bookings or reach production by accident |
