@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}Enquiry check{% endblock %}
+{% block content %}
+<h1>Enquiry check</h1>
+
+{# hx-get: send the form in the background and put the answer into #result.
+   hx-push-url: the address bar shows the enquiry, so the link can be shared or reloaded. #}
+<form class="enquiry" method="get" action="/enquiry"
+      hx-get="/enquiry" hx-target="#result" hx-push-url="true">
+  <label>Date
+    <input type="date" name="date" value="{{ form.date }}" required>
+  </label>
+  <label>Start
+    <input type="time" name="start" value="{{ form.start }}" step="900" required>
+  </label>
+  <label class="wide">Ticket
+    <select name="type">
+      {% for choice in ticket_choices %}
+      <option value="{{ choice.code }}" {% if choice.code == form.type %}selected{% endif %}>{{ choice.label }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  <label>Adults
+    <input type="number" name="adults" value="{{ form.adults }}" min="0" max="100" inputmode="numeric" required>
+  </label>
+  <label>Children
+    <input type="number" name="children" value="{{ form.children }}" min="0" max="100" inputmode="numeric">
+  </label>
+  <button type="submit">Check</button>
+</form>
+
+<section id="result" aria-live="polite">
+  {% include "_check_result.html" %}
+</section>
+{% endblock %}

@@ -65,3 +65,6 @@
 | 2026-11-08 | Docker: one `Dockerfile` (python:3.13-slim + uv) at the repo root; the api runs `alembic upgrade head` on every start | The api needs the whole uv workspace (engine, CLI day files for `seed`); tables always match the code |
 | 2026-11-08 | PostgreSQL 17 image; a second database `jiak_test` is created on first start for `TEST_DATABASE_URL` | Tests wipe their database, so they must never share the dev one |
 | 2026-11-08 | Container ports published on 127.0.0.1 only; URLs use `127.0.0.1`, not `localhost` | Not reachable from the network; on Windows `localhost` tries IPv6 first and the connection hangs |
+| 2026-11-08 | HTMX 2.0.4 is kept in the repo (`static/vendor/htmx.min.js`), not loaded from a CDN | Pages work offline and inside the Outlook pane without reaching a third-party site |
+| 2026-11-08 | Web pages use the same dev `X-Role` stand-in as the API; a browser sends no header, so it acts as Operations | Entra ID sign-in replaces it later for pages and API alike |
+| 2026-11-08 | Enquiry check form also works without JavaScript (plain GET, whole page); with HTMX only the result is swapped and the URL updated | Shareable links; nothing breaks if the script fails to load |

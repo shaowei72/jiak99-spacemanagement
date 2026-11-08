@@ -69,6 +69,8 @@ uv run alembic upgrade head                      # create or update the tables (
 uv run uvicorn jiak_api.main:app --reload        # dev server; try the routes at http://127.0.0.1:8000/docs
 ```
 
+Web pages (Milestone 3, in progress): http://127.0.0.1:8000/ opens the **Enquiry check**.
+
 Read-only views to try in the browser once the server runs (after `uv run seed`):
 
 - http://127.0.0.1:8000/api/availability?date=2026-12-01&n=10 — the sales board for a group of 10

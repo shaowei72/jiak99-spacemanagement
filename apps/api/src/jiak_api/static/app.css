@@ -1,0 +1,94 @@
+/* Jiak99 pages. One small stylesheet, no build step. Must work from ~350 px (Outlook task pane) up. */
+
+:root {
+  --ink: #1f2933;
+  --muted: #5f6b7a;
+  --line: #d9dee5;
+  --bg: #f6f7f9;
+  --accent: #0b5cad;
+  --good: #1a7f37;
+  --good-bg: #e8f5ec;
+  --costly: #9a6700;
+  --costly-bg: #fff6dd;
+  --no: #b42318;
+  --no-bg: #fdecea;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font: 15px/1.45 system-ui, "Segoe UI", sans-serif;
+  color: var(--ink);
+  background: var(--bg);
+}
+
+.top {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.6rem 1rem;
+  background: #fff;
+  border-bottom: 1px solid var(--line);
+}
+.brand { font-weight: 700; }
+.top nav a { color: var(--accent); text-decoration: none; }
+
+main { max-width: 760px; margin: 0 auto; padding: 1rem; }
+h1 { font-size: 1.3rem; margin: 0 0 0.8rem; }
+h2 { font-size: 1.05rem; margin: 1.2rem 0 0.5rem; }
+
+/* Form: one field per row on narrow screens, a grid on wider ones. */
+.enquiry { display: grid; gap: 0.6rem; grid-template-columns: 1fr; }
+.enquiry label { display: flex; flex-direction: column; font-size: 0.85rem; color: var(--muted); gap: 0.2rem; }
+.enquiry input, .enquiry select {
+  font: inherit; color: var(--ink);
+  padding: 0.45rem 0.5rem;
+  border: 1px solid var(--line); border-radius: 6px; background: #fff;
+  width: 100%;
+}
+.enquiry button {
+  font: inherit; font-weight: 600;
+  padding: 0.55rem 1rem;
+  border: 0; border-radius: 6px;
+  background: var(--accent); color: #fff; cursor: pointer;
+}
+@media (min-width: 560px) {
+  .enquiry { grid-template-columns: repeat(2, 1fr); }
+  .enquiry .wide { grid-column: 1 / -1; }
+}
+@media (min-width: 720px) {
+  .enquiry { grid-template-columns: 1fr 1fr 1fr 1fr; }
+  .enquiry .wide { grid-column: span 2; }
+  .enquiry button { align-self: end; }
+}
+
+#result { margin-top: 1rem; }
+
+.card {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-left-width: 5px;
+  border-radius: 6px;
+  padding: 0.6rem 0.8rem;
+  margin: 0 0 0.6rem;
+}
+.card p { margin: 0.15rem 0; }
+.headline { font-weight: 700; }
+.detail { color: var(--muted); font-size: 0.9rem; }
+
+.good { border-left-color: var(--good); }
+.good.verdict { background: var(--good-bg); }
+.good .headline { color: var(--good); }
+.costly { border-left-color: var(--costly); }
+.costly.verdict { background: var(--costly-bg); }
+.costly .headline { color: var(--costly); }
+.no { border-left-color: var(--no); }
+.no.verdict { background: var(--no-bg); }
+.no .headline { color: var(--no); }
+
+.errors { border-left-color: var(--no); background: var(--no-bg); }
+.errors ul { margin: 0; padding-left: 1.2rem; }
+
+.alternatives { list-style: none; margin: 0; padding: 0; }
+.alt .headline { color: var(--ink); }
