@@ -108,7 +108,7 @@ Each session is one group in one zone. Numbers are people in that group.
 
 ### The enquiries (`scenarios.json`)
 
-"CT" = Chef's Table. "First option" is the top alternative the engine must suggest.
+"CT" = Chef's Table. The CLI prints the labels CHE, CHE+CT, PHE and PHE+CT. "First option" is the top alternative the engine must suggest.
 
 | ID | Date | Enquiry | What it tests | Expected verdict | Expected detail |
 | --- | --- | --- | --- | --- | --- |

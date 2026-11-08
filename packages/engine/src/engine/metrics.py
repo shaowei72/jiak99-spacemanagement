@@ -1,5 +1,6 @@
 """Day metrics for ops and the 6-month calendar (SPEC §4.6)."""
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 
 from engine.assign import assign
@@ -26,11 +27,22 @@ def _revenue_cents(session: Session, settings: Settings) -> int:
     return session.adults * price.adult_cents + session.children * price.child_cents
 
 
+def seat_hour_use(sessions: Sequence[Session]) -> float:
+    """Share of the day's seat-hours sold, 0..1: sum(headcount x hours) / (100 seats x 12 h)."""
+    seat_hours = sum(s.headcount * s.minutes / 60 for s in sessions)
+    return seat_hours / (len(ZONES) * ZONE_CAPACITY * OPEN_HOURS)
+
+
+def zone_hour_use(sessions: Sequence[Session]) -> float:
+    """Share of the day's zone-hours used by sessions, 0..1: sum(hours) / (4 zones x 12 h)."""
+    zone_hours = sum(s.minutes / 60 for s in sessions)
+    return zone_hours / (len(ZONES) * OPEN_HOURS)
+
+
 def day_metrics(
     day: DayState, settings: Settings, *, budget: SearchBudget | None = None
 ) -> DayMetrics:
     sessions = day.sessions
-    seat_hours = sum(s.headcount * s.minutes / 60 for s in sessions)
     zone_hours = sum(s.minutes / 60 for s in sessions)
 
     average_fill = None
@@ -46,8 +58,8 @@ def day_metrics(
         revenue_per_zone_hour = revenue / zone_hours
 
     return DayMetrics(
-        seat_hour_use=seat_hours / (len(ZONES) * ZONE_CAPACITY * OPEN_HOURS),
-        zone_hour_use=zone_hours / (len(ZONES) * OPEN_HOURS),
+        seat_hour_use=seat_hour_use(sessions),
+        zone_hour_use=zone_hour_use(sessions),
         average_fill=average_fill,
         dead_gap_hours=dead_gap_hours,
         revenue_per_zone_hour_cents=revenue_per_zone_hour,

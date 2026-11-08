@@ -108,7 +108,7 @@ def test_big_group_takes_whole_zones_even_if_the_slot_has_spare_seats() -> None:
         schedule(existing), DEFAULTS, enquiry("09:00", "PREMIUM", 30), today=TODAY
     )
     assert result.placement == SplitPlacement(new_sessions=(25, 5))
-    assert result.reason.startswith("Group of 30 at 09:00 · Premium needs 2 zones (25 + 5).")
+    assert result.reason.startswith("Group of 30 at 09:00 · PHE needs 2 zones (25 + 5).")
 
 
 def test_big_group_needing_more_zones_than_free() -> None:
@@ -154,7 +154,7 @@ def test_same_dead_gap_in_two_zones_is_counted_not_repeated() -> None:
     assert result.verdict == "ACCEPT_COSTLY"
     assert result.dead_minutes_delta == 60
     assert result.reason == (
-        "Group of 50 at 11:00 · Classic needs 2 zones (25 + 25). "
+        "Group of 50 at 11:00 · CHE needs 2 zones (25 + 25). "
         "Fits, but leaves 10:30–11:00 in 2 zones unsellable."
     )
 
@@ -198,7 +198,7 @@ def test_alternatives_can_suggest_an_upgrade() -> None:
         (t("19:00"), "PREMIUM"),
         (t("18:00"), "CLASSIC"),
     ]
-    assert result.alternatives[1].change_summary == "Premium instead of Classic"
+    assert result.alternatives[1].change_summary == "PHE instead of CHE"
 
 
 def test_prices_break_ties_towards_higher_revenue() -> None:

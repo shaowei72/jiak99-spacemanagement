@@ -20,7 +20,7 @@ from engine.evaluate import (
     SplitPlacement,
     Verdict,
 )
-from engine.metrics import DayMetrics, day_metrics
+from engine.metrics import DayMetrics, day_metrics, seat_hour_use, zone_hour_use
 from engine.model import Blackout, DayState, Enquiry, Price, Schedule, Session, Settings
 from engine.timeline import Gap, dead_gaps
 
@@ -51,4 +51,6 @@ __all__ = [
     "days_between",
     "dead_gaps",
     "is_valid_date",
+    "seat_hour_use",
+    "zone_hour_use",
 ]

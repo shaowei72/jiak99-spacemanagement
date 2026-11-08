@@ -1,0 +1,15 @@
+# Files Docker never copies into the image (keeps builds small and secrets out).
+.git
+.venv
+.env
+.env.*
+**/__pycache__
+**/*.pyc
+.pytest_cache
+.mypy_cache
+.ruff_cache
+.hypothesis
+.coverage
+htmlcov
+*.db
+*.log
