@@ -69,6 +69,12 @@ uv run alembic upgrade head                      # create or update the tables (
 uv run uvicorn jiak_api.main:app --reload        # dev server; try the routes at http://127.0.0.1:8000/docs
 ```
 
+Read-only views to try in the browser once the server runs (after `uv run seed`):
+
+- http://127.0.0.1:8000/api/availability?date=2026-12-01&n=10 — the sales board for a group of 10
+- http://127.0.0.1:8000/api/calendar?from=2026-12-01&to=2027-05-31 — per-day use for the 6-month calendar
+- http://127.0.0.1:8000/api/days/2026-12-01 — one day: bookings, zone plan and metrics
+
 ### Sample data
 
 The API only sees bookings stored in the database, not the JSON example days that `uv run check` reads. To give

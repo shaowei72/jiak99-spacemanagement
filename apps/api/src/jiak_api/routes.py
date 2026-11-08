@@ -8,19 +8,22 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
-from engine import Enquiry, assign, day_metrics
+from engine import Enquiry, assign, day_metrics, days_between, is_valid_date
 from engine.model import day_of
 from engine.text import format_time
-from jiak_api import bookings, models
+from jiak_api import bookings, models, overview
 from jiak_api.auth import User, current_user, require
 from jiak_api.clock import Now
 from jiak_api.db import Database
 from jiak_api.schedule import load_schedule, load_settings
 from jiak_api.schemas import (
+    AvailabilityOut,
     BlackoutOut,
     BookingIn,
     BookingOut,
     BookingPatchIn,
+    CalendarDayOut,
+    CalendarOut,
     CheckOut,
     ConflictOut,
     DateText,
@@ -197,6 +200,76 @@ def mark_no_show(
     except bookings.BookingNotChangeable as error:
         raise HTTPException(status_code=409, detail=str(error)) from None
     return BookingOut.from_row(booking)
+
+
+# --- availability board and calendar ---------------------------------------------------------
+
+
+def real_date(text: str, field: str) -> str:
+    """Reject dates that look right but don't exist, e.g. 2026-02-30."""
+    if not is_valid_date(text):
+        raise HTTPException(status_code=422, detail=f"{field}: {text} is not a real date.")
+    return text
+
+
+@router.get("/availability")
+def get_availability(
+    date: DateText,
+    n: Annotated[int, Query(ge=1, le=100, description="Group size (people)")],
+    response: Response,
+    db: DbDep,
+    now: NowDep,
+    _user: AnyUser,
+) -> AvailabilityOut:
+    """The availability board: for a group of `n`, which start time x ticket type can be sold.
+
+    Example: /api/availability?date=2026-12-01&n=10
+    """
+    response.headers["Cache-Control"] = "no-store"  # changes with every booking
+    board = overview.board_for(db, real_date(date, "date"), n, now)
+    return AvailabilityOut.from_board(board)
+
+
+@router.get("/calendar")
+def get_calendar(
+    first: Annotated[DateText, Query(alias="from")],
+    last: Annotated[DateText, Query(alias="to")],
+    response: Response,
+    db: DbDep,
+    _user: AnyUser,
+) -> CalendarOut:
+    """Per-day use for the 6-month calendar (at most a year per request).
+
+    Example: /api/calendar?from=2026-12-01&to=2027-05-31
+    """
+    response.headers["Cache-Control"] = "no-store"
+    real_date(first, "from")
+    real_date(last, "to")
+    span = days_between(first, last) + 1
+    if span < 1:
+        raise HTTPException(status_code=422, detail="'to' must not be before 'from'.")
+    if span > overview.MAX_CALENDAR_DAYS:
+        raise HTTPException(
+            status_code=422, detail=f"At most {overview.MAX_CALENDAR_DAYS} days per request."
+        )
+    days = overview.calendar_days(db, first, last)
+    return CalendarOut(
+        first_date=first,
+        last_date=last,
+        days=[
+            CalendarDayOut(
+                date=d.date,
+                weekday=d.weekday,
+                closed=d.closed,
+                locked=d.locked,
+                bookings=d.bookings,
+                people=d.people,
+                seat_hour_use=d.seat_hour_use,
+                zone_hour_use=d.zone_hour_use,
+            )
+            for d in days
+        ],
+    )
 
 
 # --- days ------------------------------------------------------------------------------------

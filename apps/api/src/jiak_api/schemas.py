@@ -10,9 +10,10 @@ from pydantic import BaseModel, ConfigDict, Field
 from pydantic.alias_generators import to_camel
 
 from engine import Alternative, EnquiryResult, NewPlacement
-from engine.rules import TicketType
+from engine.rules import TICKET_MINUTES, TICKET_NAMES, TICKET_SHORT_NAMES, TICKET_TYPES, TicketType
 from engine.text import format_time
 from jiak_api import models
+from jiak_api.overview import Board
 
 DateText = Annotated[str, Field(pattern=r"^\d{4}-\d{2}-\d{2}$", examples=["2026-12-01"])]
 TimeText = Annotated[str, Field(pattern=r"^\d{2}:\d{2}$", examples=["10:30"])]
@@ -209,6 +210,69 @@ class MetricsOut(ApiModel):
     average_fill: float | None
     dead_gap_hours: float | None
     revenue_per_zone_hour_cents: float | None
+
+
+class TicketTypeOut(ApiModel):
+    code: TicketType
+    label: str  # e.g. "PHE+CT"
+    name: str  # e.g. "Premium Hawker Experience + Chef's Table"
+    minutes: int
+
+
+class BoardRowOut(ApiModel):
+    start: str
+    # ticket code -> "available" | "full" | "not_offered"
+    statuses: dict[str, str]
+
+
+class AvailabilityOut(ApiModel):
+    date: str
+    people: int
+    closed: bool
+    ticket_types: list[TicketTypeOut]
+    rows: list[BoardRowOut]
+
+    @classmethod
+    def from_board(cls, board: Board) -> "AvailabilityOut":
+        rows: dict[int, dict[str, str]] = {}
+        for slot in board.slots:
+            rows.setdefault(slot.start, {})[slot.ticket_type] = slot.status
+        return cls(
+            date=board.date,
+            people=board.people,
+            closed=board.closed,
+            ticket_types=[
+                TicketTypeOut(
+                    code=code,
+                    label=TICKET_SHORT_NAMES[code],
+                    name=TICKET_NAMES[code],
+                    minutes=TICKET_MINUTES[code],
+                )
+                for code in TICKET_TYPES
+            ],
+            rows=[
+                BoardRowOut(start=format_time(start), statuses=statuses)
+                for start, statuses in rows.items()
+            ],
+        )
+
+
+class CalendarDayOut(ApiModel):
+    date: str
+    weekday: str
+    closed: bool
+    locked: bool
+    bookings: int
+    people: int
+    seat_hour_use: float  # 0..1, what the calendar colours by
+    zone_hour_use: float  # 0..1
+
+
+class CalendarOut(ApiModel):
+    # "from" is a Python keyword, so the field is first_date in Python and "from" in JSON.
+    first_date: str = Field(alias="from")
+    last_date: str = Field(alias="to")
+    days: list[CalendarDayOut]
 
 
 class DayOut(ApiModel):

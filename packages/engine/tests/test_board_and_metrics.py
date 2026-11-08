@@ -2,7 +2,16 @@
 
 import pytest
 
-from engine import DayState, Price, Settings, Slot, availability, day_metrics
+from engine import (
+    DayState,
+    Price,
+    Settings,
+    Slot,
+    availability,
+    day_metrics,
+    seat_hour_use,
+    zone_hour_use,
+)
 from engine_helpers import DEFAULTS, TODAY, schedule, session, t
 
 
@@ -73,3 +82,11 @@ def test_metrics_of_a_day_with_clashing_pins() -> None:
         session("10:00", "CLASSIC", 5, zone="A", pinned=True),
     )[TODAY]
     assert day_metrics(clash, DEFAULTS).dead_gap_hours is None
+
+
+def test_usage_without_the_full_metrics() -> None:
+    """The 6-month calendar uses these two alone (no zone plan needed)."""
+    day = schedule(session("09:00", "PREMIUM_CT", 25), session("12:00", "CLASSIC", 10))[TODAY]
+    assert seat_hour_use(day.sessions) == pytest.approx((25 * 3 + 10 * 1.5) / 1200)
+    assert zone_hour_use(day.sessions) == pytest.approx(4.5 / 48)
+    assert seat_hour_use(()) == 0

@@ -49,3 +49,6 @@
 | 2026-11-08 | Short labels are CHE, CHE+CT, PHE, PHE+CT (`TICKET_SHORT_NAMES`); codes unchanged | Business feedback; codes stay stable so stored bookings are unaffected; the CLI also accepts labels as input |
 | 2026-11-08 | Seed script (`uv run seed`) loads the CLI day files, one booking per session; `apps/api` depends on `jiak-cli` for the file reader | One day-file format for CLI and database; a test checks all 29 scenarios answer the same from the database |
 | 2026-11-08 | Seeding refuses booked dates without `--replace`, and non-SQLite databases without `--yes` | Sample data must never overwrite real bookings or reach production by accident |
+| 2026-11-08 | `/calendar` also returns bookings, people, zone-hour use, closed and locked per day (SPEC asks only seat-hour use) | The calendar page needs them for tooltips and greying out closed days; costs no extra queries per day |
+| 2026-11-08 | `/calendar` skips the zone plan (no dead-gap figure) and allows at most 366 days per request | 180 zone plans would break the < 1 s target; dead gaps belong to the single-day view |
+| 2026-11-08 | `/availability` takes `n` from 1 to 100 and returns the ticket labels and lengths with the board | 100 = all 4 zones full; pages then never hard-code labels |
