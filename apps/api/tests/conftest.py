@@ -2,7 +2,7 @@
 
 By default each test gets its own SQLite file. To run the same tests against PostgreSQL (needed
 for the concurrency test to count, SPEC §8), set TEST_DATABASE_URL, e.g.
-    postgresql+psycopg://jiak:jiak@localhost:5432/jiak_test
+    postgresql+psycopg://jiak:jiak@127.0.0.1:5432/jiak_test
 """
 
 import os

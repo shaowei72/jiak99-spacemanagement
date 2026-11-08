@@ -62,3 +62,6 @@
 | 2026-11-08 | Settings limits: turnaround 0–120 min, small-group warning 0–25, alternative days 0–30, Outlook horizon 1–183 days | Catches typos; wide enough for any real choice |
 | 2026-11-08 | Per-date overrides via `PUT /days/:date/settings` (closed + blackouts, within 09:00–21:00); refused if they overlap bookings | SPEC §2 lists them as settings but §5.3 has no route; same "don't strand bookings" rule |
 | 2026-11-08 | `GET /settings` is open to Sales too | Sales sees the turnaround and prices the answers depend on; only ops can change them |
+| 2026-11-08 | Docker: one `Dockerfile` (python:3.13-slim + uv) at the repo root; the api runs `alembic upgrade head` on every start | The api needs the whole uv workspace (engine, CLI day files for `seed`); tables always match the code |
+| 2026-11-08 | PostgreSQL 17 image; a second database `jiak_test` is created on first start for `TEST_DATABASE_URL` | Tests wipe their database, so they must never share the dev one |
+| 2026-11-08 | Container ports published on 127.0.0.1 only; URLs use `127.0.0.1`, not `localhost` | Not reachable from the network; on Windows `localhost` tries IPv6 first and the connection hangs |

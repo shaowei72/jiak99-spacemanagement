@@ -1,0 +1,40 @@
+# Local dev: the api plus PostgreSQL.   docker compose up --build
+#
+# Settings come from .env (copy .env.example); every one has a default, so .env is optional.
+# Ports are published on 127.0.0.1 only, so other machines on the network can't reach them.
+
+services:
+  db:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-jiak}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-jiak}
+      POSTGRES_DB: ${POSTGRES_DB:-jiak}
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      # The data lives in a Docker volume: it survives `docker compose down` and restarts.
+      # Only `docker compose down -v` deletes it.
+      - pgdata:/var/lib/postgresql/data
+      # Run once, when the volume is first created: adds the empty jiak_test database for pytest.
+      - ./docker/postgres-init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+
+  api:
+    build: .
+    environment:
+      # "db" is the database container's name on Docker's internal network.
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-jiak}:${POSTGRES_PASSWORD:-jiak}@db:5432/${POSTGRES_DB:-jiak}
+      GRAPH_MODE: ${GRAPH_MODE:-fake}
+    ports:
+      - "127.0.0.1:${API_PORT:-8000}:8000"
+    depends_on:
+      db:
+        condition: service_healthy  # wait until PostgreSQL accepts connections
+
+volumes:
+  pgdata:

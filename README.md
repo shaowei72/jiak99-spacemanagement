@@ -106,6 +106,51 @@ required column on a table that already has rows needs a `server_default`. `test
 `models.py` and the migrations ever disagree. Other useful commands: `uv run alembic current` (which version the
 database is at), `uv run alembic history`, `uv run alembic downgrade -1` (undo the last migration).
 
+## Docker: api + PostgreSQL
+
+Needs [Docker Desktop](https://www.docker.com/products/docker-desktop/) running. Settings come from `.env`
+(optional; copy `.env.example` to `.env` to change ports or the password).
+
+```
+docker compose up --build -d     # build the api image, start PostgreSQL and the api in the background
+docker compose ps                # both should say "running" (db also "healthy")
+docker compose logs -f api       # watch the api log (Ctrl+C stops watching, not the api)
+docker compose exec api seed --yes            # load busy-day.json into PostgreSQL
+docker compose exec api seed week --yes       # the scenario week
+docker compose down              # stop both; the data stays
+docker compose down -v           # stop both AND delete the database (fresh start)
+```
+
+Then open http://127.0.0.1:8000/docs. On every start the api runs `alembic upgrade head` first, so the tables
+always match the code. After changing Python code, run `docker compose up --build -d` again to rebuild.
+
+`seed` needs `--yes` here because PostgreSQL isn't SQLite (the guard against seeding production by accident).
+
+PostgreSQL is also reachable from Windows on `127.0.0.1:5432` (user `jiak`, password `jiak`), e.g. to run
+`uv run` commands against it instead of the SQLite file. Write `127.0.0.1`, not `localhost`: Windows tries
+IPv6 first for `localhost`, and the connection then hangs forever instead of failing. In PowerShell:
+
+```
+$env:DATABASE_URL = "postgresql+psycopg://jiak:jiak@127.0.0.1:5432/jiak"
+uv run seed --yes
+Remove-Item Env:DATABASE_URL     # back to SQLite in this window
+```
+
+### Tests on PostgreSQL
+
+The tests use SQLite by default. The no-double-booking test only proves something on PostgreSQL (SPEC §8),
+so run them there too before merging API changes. The database container must be running (`docker compose up -d db`
+is enough). In PowerShell:
+
+```
+$env:TEST_DATABASE_URL = "postgresql+psycopg://jiak:jiak@127.0.0.1:5432/jiak_test"
+uv run pytest apps/api
+Remove-Item Env:TEST_DATABASE_URL
+```
+
+`jiak_test` is a separate, empty database created when the volume is first made
+(`docker/postgres-init/`). The tests wipe it on every test, so never point `TEST_DATABASE_URL` at `jiak`.
+
 ## What the Microsoft 365 admin will need to do
 
 Nothing yet. Needed from Milestone 4 (see `SPEC.md` §5.4): an Entra app registration with `Calendars.ReadWrite`
