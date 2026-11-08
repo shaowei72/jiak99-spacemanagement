@@ -9,7 +9,7 @@ def format_time(minutes: int) -> str:
 
 
 def ticket_label(ticket_type: TicketType) -> str:
-    """'PREMIUM' -> 'Premium', 'CLASSIC_CT' -> "Classic + Chef's Table"."""
+    """'PREMIUM' -> 'PHE', 'CLASSIC_CT' -> 'CHE+CT'."""
     return TICKET_SHORT_NAMES[ticket_type]
 
 
@@ -19,7 +19,7 @@ def duration_label(ticket_type: TicketType) -> str:
 
 
 def slot_label(start: int, ticket_type: TicketType) -> str:
-    """(660, 'PREMIUM') -> '11:00 · Premium'."""
+    """(660, 'PREMIUM') -> '11:00 · PHE'."""
     return f"{format_time(start)} · {ticket_label(ticket_type)}"
 
 

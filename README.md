@@ -3,12 +3,15 @@
 Helps sales and operations sell and allocate 4 identical zones (up to 25 people each). Each group gets a zone of
 its own: once a zone is taken, it is sold out for that time slot, however few people are in it.
 
-| Code | Ticket | Length |
-| --- | --- | --- |
-| `CLASSIC` | Classic Hawker Experience | 1.5 h |
-| `CLASSIC_CT` | Classic Hawker Experience + Chef's Table | 1.5 h |
-| `PREMIUM` | Premium Hawker Experience | 2 h |
-| `PREMIUM_CT` | Premium Hawker Experience + Chef's Table | 3 h |
+| Code | Label | Ticket | Length |
+| --- | --- | --- | --- |
+| `CLASSIC` | CHE | Classic Hawker Experience | 1.5 h |
+| `CLASSIC_CT` | CHE+CT | Classic Hawker Experience + Chef's Table | 1.5 h |
+| `PREMIUM` | PHE | Premium Hawker Experience | 2 h |
+| `PREMIUM_CT` | PHE+CT | Premium Hawker Experience + Chef's Table | 3 h |
+
+Codes are what the database and API store; labels and names are display-only (`engine/rules.py`), so they can be
+renamed without touching data.
 
 `SPEC.md` is the contract, `DECISIONS.md` records deviations, `CLAUDE.md` has working rules.
 
@@ -28,7 +31,8 @@ uv run pytest    # all tests
 ## Try an enquiry
 
 ```
-uv run check 2026-12-01 11:30 PREMIUM 10                 # busy-day.json + availability board (defaults)
+uv run check 2026-12-01 11:30 PREMIUM 10                 # busy-day.json + operations board (defaults)
+uv run check 2026-12-01 11:30 PREMIUM 10 --board sales   # what can still be sold
 uv run check 2026-12-01 10:00 PREMIUM 10 --empty-day     # start from an empty day
 uv run check 2026-12-01 10:30 classic-ct 6 --children 2 --no-board
 uv run check 2026-12-01 10:30 CLASSIC 4 --day apps/cli/examples/week.json
@@ -38,7 +42,15 @@ uv run check --help
 By default the day comes from `apps/cli/examples/busy-day.json`, which only has sessions on 2026-12-01 (other dates
 are empty), and the board is printed. `--day` and `--empty-day` can't be used together.
 
-Ticket types can be typed in any case, with `_`, `-` or a space (`classic-ct`, `Classic CT`).
+Two boards (`--no-board` hides them):
+
+- `--board operations` (default): zones A–D across, time down. Each cell shows the ticket type in that zone
+  under the engine's current best plan, with the request added and marked `*`. Only pinned zones (`p`) are
+  fixed; the rest may still move until ops allocates the day.
+- `--board sales`: start times down, ticket types across. `+` = a group this size can still be sold.
+
+Ticket types can be typed as the label (`PHE`, `che+ct`) or the code, in any case, with `_`, `-` or a space
+(`classic-ct`, `Classic CT`).
 
 Write a day file in the same format as `apps/cli/examples/week.json` to try real days.
 

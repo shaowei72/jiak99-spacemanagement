@@ -28,12 +28,12 @@ TICKET_NAMES: Final[Mapping[TicketType, str]] = {
     "PREMIUM_CT": "Premium Hawker Experience + Chef's Table",
 }
 
-# Short names, for one-line messages to sales.
+# Short labels, for boards and one-line messages to sales (CT = Chef's Table).
 TICKET_SHORT_NAMES: Final[Mapping[TicketType, str]] = {
-    "CLASSIC": "Classic",
-    "CLASSIC_CT": "Classic + Chef's Table",
-    "PREMIUM": "Premium",
-    "PREMIUM_CT": "Premium + Chef's Table",
+    "CLASSIC": "CHE",
+    "CLASSIC_CT": "CHE+CT",
+    "PREMIUM": "PHE",
+    "PREMIUM_CT": "PHE+CT",
 }
 
 SHORTEST_TICKET_MINUTES: Final = min(TICKET_MINUTES.values())

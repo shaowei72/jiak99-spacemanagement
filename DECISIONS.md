@@ -45,3 +45,5 @@
 | 2026-11-08 | No-show only once the start time is reached; before that the answer is "cancel" | Stops a mistaken no-show from freeing a zone early; spec silent |
 | 2026-11-08 | No-show deletes the booking's sessions (zone freed), the booking stays in the day view | SPEC §3: a session with zero confirmed bookings is deleted; ops still sees who didn't come |
 | 2026-11-08 | Audit snapshots include the customer details | So customer-only edits are recorded too |
+| 2026-11-08 | `uv run check` prints a zone board (`--board operations`, default) as well as the sales board (`--board sales`) | Zones A–D are what ops thinks in; it shows the engine's current best plan with the request added, so "costly" gaps are visible |
+| 2026-11-08 | Short labels are CHE, CHE+CT, PHE, PHE+CT (`TICKET_SHORT_NAMES`); codes unchanged | Business feedback; codes stay stable so stored bookings are unaffected; the CLI also accepts labels as input |
