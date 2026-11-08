@@ -8,7 +8,7 @@ EXAMPLE = Path(__file__).parent.parent / "examples" / "busy-day.json"
 
 
 def test_cli_prints_verdict_reason_and_options(capsys: pytest.CaptureFixture[str]) -> None:
-    main(["2026-12-01", "10:00", "premium", "10", "--today", "2026-12-01"])
+    main(["2026-12-01", "10:00", "premium", "10", "--today", "2026-12-01", "--empty-day"])
     out = capsys.readouterr().out
     assert "Verdict: ACCEPT_COSTLY" in out
     assert "leaves 09:00–10:00 in one zone unsellable" in out
@@ -34,6 +34,23 @@ def test_cli_reads_a_day_file_and_prints_the_board(capsys: pytest.CaptureFixture
     assert "Board for 12 people" in out
     assert "  09:00     x          x          x          x" in out  # all 4 zones taken
     assert "  11:00     +          +          +          +" in out
+
+
+def test_cli_uses_busy_day_and_board_by_default(capsys: pytest.CaptureFixture[str]) -> None:
+    main(["2026-12-01", "10:00", "premium", "10", "--today", "2026-12-01"])
+    out = capsys.readouterr().out
+    assert "All 4 zones are in use" in out  # busy-day.json fills every zone at 10:00
+    assert "Board for 10 people" in out
+
+
+def test_cli_no_board_hides_the_board(capsys: pytest.CaptureFixture[str]) -> None:
+    main(["2026-12-01", "10:00", "premium", "10", "--today", "2026-12-01", "--no-board"])
+    assert "Board for" not in capsys.readouterr().out
+
+
+def test_cli_refuses_a_day_file_together_with_empty_day() -> None:
+    with pytest.raises(SystemExit):
+        main(["2026-12-01", "10:00", "premium", "10", "--day", str(EXAMPLE), "--empty-day"])
 
 
 def test_cli_rejects_unknown_ticket_type() -> None:

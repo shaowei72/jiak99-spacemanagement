@@ -27,7 +27,8 @@ Table, Premium, Premium + Chef's Table; 1.5–3 h), Outlook (Microsoft 365) as t
 - `uv run pytest` — all packages
 - `uv run pytest packages/engine` — engine only
 - `uv run pytest --cov` — with coverage (engine must stay at 100%)
-- `uv run check 2026-12-01 10:00 PREMIUM 10 [--day apps/cli/examples/busy-day.json] [--board]` — try an enquiry
+- `uv run check 2026-12-01 10:00 PREMIUM 10 [--day FILE | --empty-day] [--no-board]` — try an enquiry
+  (defaults: `apps/cli/examples/busy-day.json` and the availability board)
 - `uv run scenarios [--show S11]` — run the scenario week (`apps/cli/examples/SCENARIOS.md`)
 - `uv run ruff check . && uv run ruff format --check . && uv run mypy` — lint, format, types
 - `docker compose up` — api (incl. web pages) + PostgreSQL

@@ -28,11 +28,15 @@ uv run pytest    # all tests
 ## Try an enquiry
 
 ```
-uv run check 2026-12-01 10:00 PREMIUM 10
-uv run check 2026-12-01 11:30 PREMIUM 10 --day apps/cli/examples/busy-day.json --board
-uv run check 2026-12-01 10:30 classic-ct 6 --children 2
+uv run check 2026-12-01 11:30 PREMIUM 10                 # busy-day.json + availability board (defaults)
+uv run check 2026-12-01 10:00 PREMIUM 10 --empty-day     # start from an empty day
+uv run check 2026-12-01 10:30 classic-ct 6 --children 2 --no-board
+uv run check 2026-12-01 10:30 CLASSIC 4 --day apps/cli/examples/week.json
 uv run check --help
 ```
+
+By default the day comes from `apps/cli/examples/busy-day.json`, which only has sessions on 2026-12-01 (other dates
+are empty), and the board is printed. `--day` and `--empty-day` can't be used together.
 
 Ticket types can be typed in any case, with `_`, `-` or a space (`classic-ct`, `Classic CT`).
 

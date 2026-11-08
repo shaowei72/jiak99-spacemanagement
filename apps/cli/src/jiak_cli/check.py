@@ -1,8 +1,12 @@
 """Try an enquiry against a day from a JSON file, without any screens.
 
-    uv run check 2026-12-01 10:00 PREMIUM 10
-    uv run check 2026-12-01 11:30 PREMIUM 10 --day apps/cli/examples/busy-day.json
-    uv run check 2026-12-01 10:30 CLASSIC 4 --children 2 --turnaround 15 --board
+    uv run check 2026-12-01 11:30 PREMIUM 10              # busy-day.json + board (the defaults)
+    uv run check 2026-12-01 10:00 PREMIUM 10 --empty-day  # start from an empty day
+    uv run check 2026-12-01 10:30 CLASSIC 4 --day apps/cli/examples/week.json --no-board
+    uv run check 2026-12-01 10:30 CLASSIC 4 --children 2 --turnaround 15
+
+By default the day comes from apps/cli/examples/busy-day.json (it only has sessions on 2026-12-01;
+other dates are empty) and the availability board is printed.
 
 Day file format (any number of dates). A date maps either to a list of sessions, or to an object
 when the day is closed or has blackouts. Keys starting with "_" are comments and are ignored:
@@ -35,6 +39,10 @@ from engine.rules import TICKET_TYPES, TicketType
 from engine.text import format_time, slot_label
 
 SINGAPORE = timezone(timedelta(hours=8))  # no daylight saving
+
+# apps/cli/examples/busy-day.json, found from this file so it works from any folder.
+# parents[0] = jiak_cli, [1] = src, [2] = apps/cli
+DEFAULT_DAY_FILE = Path(__file__).resolve().parents[2] / "examples" / "busy-day.json"
 
 
 def parse_time(text: str) -> int:
@@ -124,16 +132,31 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("type", type=parse_ticket_type, help=", ".join(TICKET_TYPES))
     parser.add_argument("adults", type=int)
     parser.add_argument("--children", type=int, default=0)
-    parser.add_argument("--day", type=Path, help="JSON file with existing sessions")
+    # Use either a day file or an empty day, not both (argparse refuses the combination).
+    day_options = parser.add_mutually_exclusive_group()
+    day_options.add_argument(
+        "--day",
+        type=Path,
+        default=DEFAULT_DAY_FILE,
+        help="JSON file with existing sessions (default: examples/busy-day.json)",
+    )
+    day_options.add_argument(
+        "--empty-day", action="store_true", help="start from an empty day instead of a day file"
+    )
     parser.add_argument("--turnaround", type=int, default=0, help="zone reset minutes")
     parser.add_argument("--warn-below", type=int, default=0, help="small-group warning size")
     parser.add_argument("--today", help="pretend today is YYYY-MM-DD (default: real date)")
-    parser.add_argument("--board", action="store_true", help="also print the availability board")
+    parser.add_argument(
+        "--board",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="print the availability board (default; --no-board to hide it)",
+    )
     args = parser.parse_args(argv)
 
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8")  # the messages use "·" and "–"
-    days = load_days(args.day) if args.day else {}
+    days = {} if args.empty_day else load_days(args.day)
     settings = Settings(turnaround_minutes=args.turnaround, small_group_warn_below=args.warn_below)
     today = args.today or datetime.now(SINGAPORE).date().isoformat()
     enquiry = Enquiry(args.date, args.start, args.type, args.adults, args.children)
