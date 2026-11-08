@@ -68,3 +68,8 @@
 | 2026-11-08 | HTMX 2.0.4 is kept in the repo (`static/vendor/htmx.min.js`), not loaded from a CDN | Pages work offline and inside the Outlook pane without reaching a third-party site |
 | 2026-11-08 | Web pages use the same dev `X-Role` stand-in as the API; a browser sends no header, so it acts as Operations | Entra ID sign-in replaces it later for pages and API alike |
 | 2026-11-08 | Enquiry check form also works without JavaScript (plain GET, whole page); with HTMX only the result is swapped and the URL updated | Shareable links; nothing breaks if the script fails to load |
+| 2026-11-08 | Booking from the page posts an HTML form to `POST /enquiry/book`, which calls the same booking service as `POST /api/bookings` (same date lock and re-check) | Works without JavaScript and inside the Outlook pane; one place holds the booking rules |
+| 2026-11-08 | Without JavaScript a successful booking redirects (303) to `/bookings/:id`; with HTMX the confirmation is swapped in and the URL set to the same page | Reloading the page can't book the group twice; the booking has a link to share |
+| 2026-11-08 | The Book form lets sales adjust adults and children before booking; the date, time and ticket come from the button | Headcounts often change during the call; the server re-checks everything on submit anyway |
+| 2026-11-08 | HTMX is configured (`htmx-config` meta) to show 409 "no longer fits" and 422 form mistakes; other errors still aren't swapped in | Both carry a message the user needs; keeps the real HTTP status codes |
+| 2026-11-08 | Empty phone, email or company fields are stored as "not given" (null), not as empty text | Same as leaving them out in the JSON API |

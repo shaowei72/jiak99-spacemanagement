@@ -7,12 +7,22 @@
 </div>
 {% elif check %}
 {% set headline, look = verdict_looks[check.verdict] %}
+{% if no_longer_fits %}{% set headline = "No longer fits" %}{% endif %}
 <div class="card verdict {{ look }}">
   <p class="headline">{{ headline }}</p>
   <p class="reason">{{ check.reason }}</p>
   {% if check.placement and check.placement.kind == "split" %}
   <p class="detail">Needs {{ check.placement.new_sessions | length }} zones:
     {{ check.placement.new_sessions | join(" + ") }} people.</p>
+  {% endif %}
+  {% if no_longer_fits %}
+  <p class="detail">Someone else booked meanwhile. Nothing was booked; offer an alternative.</p>
+  {% elif check.verdict != "NOT_POSSIBLE" %}
+  {% set url = book_url(form.date, form.start, form.type, form.adults, form.children) %}
+  <p class="actions">
+    <a class="button" href="{{ url }}" hx-get="{{ url }}"
+       hx-target="#result" hx-push-url="true">Book this</a>
+  </p>
   {% endif %}
 </div>
 
@@ -24,6 +34,13 @@
   <li class="card alt {{ alt_look }}">
     <p class="headline">{{ alt.change_summary }}</p>
     <p class="detail">{{ alt.date }} · {{ alt.start }} · {{ short_names[alt.ticket_type] }} — {{ alt.gain_summary }}</p>
+    {% if alt.verdict != "NOT_POSSIBLE" %}
+    {% set url = book_url(alt.date, alt.start, alt.ticket_type, form.adults, form.children) %}
+    <p class="actions">
+      <a class="button secondary" href="{{ url }}" hx-get="{{ url }}"
+         hx-target="#result" hx-push-url="true">Book</a>
+    </p>
+    {% endif %}
   </li>
   {% endfor %}
 </ul>

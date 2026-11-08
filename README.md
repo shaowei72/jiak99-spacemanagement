@@ -69,7 +69,10 @@ uv run alembic upgrade head                      # create or update the tables (
 uv run uvicorn jiak_api.main:app --reload        # dev server; try the routes at http://127.0.0.1:8000/docs
 ```
 
-Web pages (Milestone 3, in progress): http://127.0.0.1:8000/ opens the **Enquiry check**.
+Web pages (Milestone 3, in progress): http://127.0.0.1:8000/ opens the **Enquiry check**. A good or costly
+verdict and each alternative has a **Book** button: fill in the customer's name (phone, email, company and notes
+are optional) and press Book. If someone else took the slot meanwhile, the page says it no longer fits and shows
+fresh alternatives. Each booking has its own page, `/bookings/<id>`.
 
 Read-only views to try in the browser once the server runs (after `uv run seed`):
 

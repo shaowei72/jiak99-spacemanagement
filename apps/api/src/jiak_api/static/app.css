@@ -38,30 +38,42 @@ main { max-width: 760px; margin: 0 auto; padding: 1rem; }
 h1 { font-size: 1.3rem; margin: 0 0 0.8rem; }
 h2 { font-size: 1.05rem; margin: 1.2rem 0 0.5rem; }
 
-/* Form: one field per row on narrow screens, a grid on wider ones. */
-.enquiry { display: grid; gap: 0.6rem; grid-template-columns: 1fr; }
-.enquiry label { display: flex; flex-direction: column; font-size: 0.85rem; color: var(--muted); gap: 0.2rem; }
-.enquiry input, .enquiry select {
+/* Forms (enquiry and customer): one field per row on narrow screens, a grid on wider ones. */
+.enquiry, .customer { display: grid; gap: 0.6rem; grid-template-columns: 1fr; }
+.enquiry label, .customer label {
+  display: flex; flex-direction: column; font-size: 0.85rem; color: var(--muted); gap: 0.2rem;
+}
+.enquiry input, .enquiry select, .customer input, .customer textarea {
   font: inherit; color: var(--ink);
   padding: 0.45rem 0.5rem;
   border: 1px solid var(--line); border-radius: 6px; background: #fff;
   width: 100%;
 }
-.enquiry button {
-  font: inherit; font-weight: 600;
-  padding: 0.55rem 1rem;
-  border: 0; border-radius: 6px;
-  background: var(--accent); color: #fff; cursor: pointer;
-}
 @media (min-width: 560px) {
-  .enquiry { grid-template-columns: repeat(2, 1fr); }
-  .enquiry .wide { grid-column: 1 / -1; }
+  .enquiry, .customer { grid-template-columns: repeat(2, 1fr); }
+  .enquiry .wide, .customer .wide { grid-column: 1 / -1; }
 }
 @media (min-width: 720px) {
   .enquiry { grid-template-columns: 1fr 1fr 1fr 1fr; }
   .enquiry .wide { grid-column: span 2; }
   .enquiry button { align-self: end; }
 }
+
+/* Buttons. A link styled as a button (.button) looks the same as a real one. */
+button, .button {
+  display: inline-block;
+  font: inherit; font-weight: 600;
+  padding: 0.55rem 1rem;
+  border: 1px solid var(--accent); border-radius: 6px;
+  background: var(--accent); color: #fff; cursor: pointer;
+  text-decoration: none;
+}
+.button.secondary { background: #fff; color: var(--accent); padding: 0.3rem 0.8rem; }
+button:disabled { opacity: 0.5; cursor: wait; }
+.actions { margin: 0.5rem 0 0; }
+.buttons { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; }
+.buttons a { color: var(--accent); }
+.booking-summary { border-left-color: var(--accent); }
 
 #result { margin-top: 1rem; }
 

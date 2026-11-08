@@ -29,7 +29,8 @@
   <button type="submit">Check</button>
 </form>
 
+{# `part` is the answer under the form: the check result, the Book form or a booking. #}
 <section id="result" aria-live="polite">
-  {% include "_check_result.html" %}
+  {% include part %}
 </section>
 {% endblock %}

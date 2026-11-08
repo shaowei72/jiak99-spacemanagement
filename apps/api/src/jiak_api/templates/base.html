@@ -4,6 +4,15 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}Jiak99{% endblock %} · Jiak99</title>
+  {# HTMX normally ignores error answers. Show 409 (no longer fits) and 422 (form mistakes):
+     they carry a message for the user. Other errors are still ignored. #}
+  <meta name="htmx-config" content='{"responseHandling": [
+    {"code": "204", "swap": false},
+    {"code": "[23]..", "swap": true},
+    {"code": "409", "swap": true, "error": false},
+    {"code": "422", "swap": true, "error": false},
+    {"code": "[45]..", "swap": false, "error": true}
+  ]}'>
   <link rel="stylesheet" href="/static/app.css">
   <script src="/static/vendor/htmx.min.js" defer></script>
 </head>

@@ -1,0 +1,21 @@
+{# One booking. Shown right after booking (just_booked) and at /bookings/<id>. #}
+{% set status_looks = {"confirmed": "good", "cancelled": "no", "no_show": "no"} %}
+<div class="card verdict {{ status_looks.get(booking.status, '') }}">
+  {% if just_booked %}
+  <p class="headline">Booked</p>
+  {% else %}
+  <p class="headline">Booking · {{ booking.status | replace("_", " ") }}</p>
+  {% endif %}
+  <p><strong>{{ booking.customer.name }}</strong>{% if booking.customer.company %} · {{ booking.customer.company }}{% endif %}</p>
+  <p>{{ booking.date }} · {{ booking.start }} · {{ short_names.get(booking.ticket_type, booking.ticket_type) }} – {{ ticket_names.get(booking.ticket_type, "") }}</p>
+  <p>{{ people(booking.adults, booking.children) }}
+    {% if booking.sessions | length > 1 %}· takes {{ booking.sessions | length }} zones{% endif %}</p>
+  {% if booking.customer.phone or booking.customer.email %}
+  <p class="detail">
+    {{ booking.customer.phone or "" }}{% if booking.customer.phone and booking.customer.email %} · {% endif %}{{ booking.customer.email or "" }}
+  </p>
+  {% endif %}
+  {% if booking.notes %}<p class="detail">Notes: {{ booking.notes }}</p>{% endif %}
+  <p class="detail">Ref {{ booking.id }} · by {{ booking.created_by }}</p>
+</div>
+<p class="actions"><a class="button" href="/enquiry">New enquiry</a></p>
