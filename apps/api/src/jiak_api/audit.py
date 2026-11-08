@@ -40,6 +40,12 @@ def booking_snapshot(booking: models.Booking) -> dict[str, Any]:
         "children": booking.children,
         "status": booking.status,
         "customerId": booking.customer_id,
+        "customer": {
+            "name": booking.customer.name,
+            "phone": booking.customer.phone,
+            "email": booking.customer.email,
+            "company": booking.customer.company,
+        },
         "notes": booking.notes,
         "sessions": [
             {"id": s.id, "adults": s.adults, "children": s.children, "zoneId": s.zone_id}

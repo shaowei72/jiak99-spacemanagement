@@ -2,7 +2,7 @@
 
 import threading
 from collections.abc import Iterator
-from contextlib import contextmanager
+from contextlib import ExitStack, contextmanager
 
 from sqlalchemy import Engine, create_engine, text
 from sqlalchemy.orm import Session, sessionmaker
@@ -35,6 +35,18 @@ class Database:
         with self._sqlite_locks_guard:
             lock = self._sqlite_locks.setdefault(date, threading.Lock())
         with lock:
+            yield
+
+    @contextmanager
+    def date_locks(self, db: Session, dates: list[str]) -> Iterator[None]:
+        """Lock several dates at once, e.g. the old and new date when a booking moves.
+
+        Dates are locked in calendar order, and each only once. If two requests both need
+        2026-12-01 and 2026-12-02, they queue on 12-01 first, so they can never deadlock.
+        """
+        with ExitStack() as stack:
+            for date in sorted(set(dates)):
+                stack.enter_context(self.date_lock(db, date))
             yield
 
 

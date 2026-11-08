@@ -20,6 +20,7 @@ from jiak_api.schemas import (
     BlackoutOut,
     BookingIn,
     BookingOut,
+    BookingPatchIn,
     CheckOut,
     ConflictOut,
     DateText,
@@ -55,6 +56,7 @@ DatabaseDep = Annotated[Database, Depends(get_database)]
 DbDep = Annotated[Session, Depends(get_db)]
 NowDep = Annotated[Now, Depends(get_now)]
 SalesUser = Annotated[User, Depends(require("Sales"))]
+OperationsUser = Annotated[User, Depends(require("Operations"))]
 AnyUser = Annotated[User, Depends(current_user)]
 
 
@@ -126,6 +128,49 @@ def get_booking(booking_id: str, db: DbDep, _user: AnyUser) -> BookingOut:
     return BookingOut.from_row(booking)
 
 
+@router.patch(
+    "/bookings/{booking_id}",
+    responses={409: {"model": ConflictOut, "description": "New slot or headcount doesn't fit"}},
+)
+def edit_booking(
+    booking_id: str,
+    body: BookingPatchIn,
+    database: DatabaseDep,
+    db: DbDep,
+    now: NowDep,
+    user: SalesUser,
+) -> BookingOut:
+    """Change a booking. A new date, time, type or headcount is re-checked like a new booking.
+
+    Example body (move to 14:00 and add two children): {"start": "14:00", "children": 2}
+    """
+    customer = None
+    if body.customer is not None:
+        customer = bookings.CustomerDetails(
+            name=body.customer.name,
+            phone=body.customer.phone,
+            email=body.customer.email,
+            company=body.customer.company,
+        )
+    changes = bookings.BookingChanges(
+        date=body.date,
+        start=parse_time(body.start) if body.start is not None else None,
+        ticket_type=body.ticket_type,
+        adults=body.adults,
+        children=body.children,
+        notes=body.notes,
+        customer=customer,
+    )
+    # If it doesn't fit, NoLongerFits becomes a 409 reply (see no_longer_fits_handler).
+    try:
+        booking = bookings.edit_booking(database, db, booking_id, changes, actor=user.name, now=now)
+    except bookings.BookingNotFound:
+        raise HTTPException(status_code=404, detail="Booking not found.") from None
+    except bookings.BookingNotChangeable as error:
+        raise HTTPException(status_code=409, detail=str(error)) from None
+    return BookingOut.from_row(booking)
+
+
 @router.post("/bookings/{booking_id}/cancel")
 def cancel_booking(
     booking_id: str, database: DatabaseDep, db: DbDep, user: SalesUser
@@ -133,6 +178,20 @@ def cancel_booking(
     """Cancel a booking; its zones become free again."""
     try:
         booking = bookings.cancel_booking(database, db, booking_id, actor=user.name)
+    except bookings.BookingNotFound:
+        raise HTTPException(status_code=404, detail="Booking not found.") from None
+    except bookings.BookingNotChangeable as error:
+        raise HTTPException(status_code=409, detail=str(error)) from None
+    return BookingOut.from_row(booking)
+
+
+@router.post("/bookings/{booking_id}/no-show")
+def mark_no_show(
+    booking_id: str, database: DatabaseDep, db: DbDep, now: NowDep, user: OperationsUser
+) -> BookingOut:
+    """The group didn't come (only after the start time). Its zones become free again."""
+    try:
+        booking = bookings.mark_no_show(database, db, booking_id, actor=user.name, now=now)
     except bookings.BookingNotFound:
         raise HTTPException(status_code=404, detail="Booking not found.") from None
     except bookings.BookingNotChangeable as error:

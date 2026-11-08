@@ -51,6 +51,21 @@ class BookingIn(EnquiryIn):
     notes: str = ""
 
 
+class BookingPatchIn(ApiModel):
+    """PATCH /bookings/:id body. Send only what changes; missing fields stay as they are.
+
+    `customer`, if sent, replaces all the customer details.
+    """
+
+    date: DateText | None = None
+    start: TimeText | None = None
+    ticket_type: TicketType | None = Field(default=None, alias="type")
+    adults: int | None = Field(default=None, ge=0)
+    children: int | None = Field(default=None, ge=0)
+    notes: str | None = None
+    customer: CustomerIn | None = None
+
+
 # --- responses -------------------------------------------------------------------------------
 
 

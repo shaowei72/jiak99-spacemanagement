@@ -39,3 +39,9 @@
 | 2026-11-07 | Booking lock: PostgreSQL `pg_advisory_xact_lock(YYYYMMDD)`; SQLite uses an in-process lock | SQLite is for single-process local dev only; the PostgreSQL lock works across processes |
 | 2026-11-07 | Every booking creates a new customer row (no matching of repeat customers yet) | Keeps M2 simple; matching can be added when the Outlook import shows real data |
 | 2026-11-07 | Enquiry check is `GET /api/enquiries/check?…` instead of POST | It reads and stores nothing; inputs are 5 simple values; links can be shared. Sent with `Cache-Control: no-store` so a stale answer is never reused |
+| 2026-11-08 | Edit re-checks only when date, time, type or headcount change, ignoring the booking's own sessions | A booking must not clash with itself; notes/customer edits need no check and work even after the visit |
+| 2026-11-08 | An edit keeps the session (and its zone) if only the headcount changes and the zone count stays the same; otherwise new floating sessions | Keeps ops' zone plan when nothing about the slot moved; anything else is a new slot |
+| 2026-11-08 | Moving a booking to another date locks both dates, in calendar order | Two crossing moves can never deadlock |
+| 2026-11-08 | No-show only once the start time is reached; before that the answer is "cancel" | Stops a mistaken no-show from freeing a zone early; spec silent |
+| 2026-11-08 | No-show deletes the booking's sessions (zone freed), the booking stays in the day view | SPEC §3: a session with zero confirmed bookings is deleted; ops still sees who didn't come |
+| 2026-11-08 | Audit snapshots include the customer details | So customer-only edits are recorded too |

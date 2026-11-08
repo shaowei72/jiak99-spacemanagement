@@ -1,5 +1,7 @@
 """Turn database rows into the engine's types (DayState, Settings)."""
 
+from collections.abc import Collection
+from dataclasses import replace
 from typing import Any, cast
 
 from sqlalchemy import select
@@ -74,6 +76,15 @@ def load_around(db: Session, date: str, settings: Settings) -> Schedule:
     """The date plus the days either side that "another day" alternatives may look at."""
     reach = settings.alternative_day_search
     return load_schedule(db, add_days(date, -reach), add_days(date, reach))
+
+
+def without_sessions(schedule: Schedule, session_ids: Collection[str]) -> Schedule:
+    """The same schedule with some sessions left out (e.g. the booking being edited)."""
+    result: dict[str, DayState] = {}
+    for date, day in schedule.items():
+        kept = tuple(s for s in day.sessions if s.id not in session_ids)
+        result[date] = replace(day, sessions=kept)
+    return result
 
 
 def to_engine_session(row: models.Session) -> EngineSession:
