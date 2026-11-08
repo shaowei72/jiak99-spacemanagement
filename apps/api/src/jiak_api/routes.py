@@ -8,10 +8,11 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
-from engine import Enquiry, assign, day_metrics, days_between, is_valid_date
+from engine import Blackout, Enquiry, Price, assign, day_metrics, days_between, is_valid_date
+from engine import Settings as EngineSettings
 from engine.model import day_of
 from engine.text import format_time
-from jiak_api import bookings, models, overview, plan
+from jiak_api import bookings, business_settings, models, overview, plan
 from jiak_api.auth import User, current_user, require
 from jiak_api.clock import Now
 from jiak_api.db import Database
@@ -28,9 +29,11 @@ from jiak_api.schemas import (
     ConflictOut,
     DateText,
     DayOut,
+    DaySettingsIn,
     EnquiryIn,
     MetricsOut,
     PinIn,
+    SettingsBody,
     parse_time,
 )
 
@@ -271,6 +274,54 @@ def get_calendar(
             for d in days
         ],
     )
+
+
+# --- settings --------------------------------------------------------------------------------
+
+
+@router.get("/settings")
+def get_settings(db: DbDep, _user: AnyUser) -> SettingsBody:
+    """The business settings (SPEC §2): the defaults until ops saves others."""
+    return SettingsBody.model_validate(business_settings.settings_snapshot(load_settings(db)))
+
+
+@router.put("/settings")
+def put_settings(body: SettingsBody, db: DbDep, now: NowDep, user: OperationsUser) -> SettingsBody:
+    """Replace the business settings. Refused (409) if bookings from today on would no longer fit."""
+    prices = None
+    if body.prices is not None:
+        prices = {code: Price(p.adult_cents, p.child_cents) for code, p in body.prices.items()}
+    new = EngineSettings(
+        turnaround_minutes=body.turnaround_minutes,
+        small_group_warn_below=body.small_group_warn_below,
+        alternative_day_search=body.alternative_day_search,
+        availability_calendar_days=body.availability_calendar_days,
+        prices=prices,
+    )
+    try:
+        business_settings.save_settings(db, new, actor=user.name, now=now)
+    except business_settings.SettingsConflict as error:
+        raise HTTPException(status_code=409, detail=str(error)) from None
+    return SettingsBody.model_validate(business_settings.settings_snapshot(load_settings(db)))
+
+
+@router.put("/days/{date}/settings")
+def put_day_settings(
+    date: DateText, body: DaySettingsIn, database: DatabaseDep, db: DbDep, user: OperationsUser
+) -> DayOut:
+    """Close or reopen a date and set its blackout times. Refused (409) if it strands bookings.
+
+    Example body: {"closed": false, "blackouts": [{"start": "14:00", "end": "17:00"}]}
+    """
+    date = real_date(date, "date")
+    blackouts = [Blackout(parse_time(b.start), parse_time(b.end)) for b in body.blackouts]
+    try:
+        business_settings.save_day_settings(
+            database, db, date, closed=body.closed, blackouts=blackouts, actor=user.name
+        )
+    except business_settings.SettingsConflict as error:
+        raise HTTPException(status_code=409, detail=str(error)) from None
+    return day_view(db, date)
 
 
 # --- days ------------------------------------------------------------------------------------

@@ -57,3 +57,8 @@
 | 2026-11-08 | Pinning re-plans and stores zones for the other movable sessions; refused (409) if no valid plan is left | Stored zones never show two groups in one zone at the same time |
 | 2026-11-08 | `PATCH /sessions/:id/pin` body: `{"zone": "B"}`, `{}` (current zone) or `{"pinned": false}`; plan actions return the day view | One route for pin/unpin as SPEC lists; the page needs the whole day as other groups may move |
 | 2026-11-08 | Zone-calendar write on lock deferred to Milestone 4 | Needs the Graph gateway (`packages/graph`), built in Milestone 4 |
+| 2026-11-08 | `PUT /settings` is refused (409) if any booked day from today on would have no valid zone plan; past days are ignored | A settings change must never strand confirmed bookings |
+| 2026-11-08 | `PUT /settings` doesn't take every date lock; a booking racing a settings change could slip through | Settings change rarely and only by ops; locking ~180 dates per change isn't worth it yet |
+| 2026-11-08 | Settings limits: turnaround 0–120 min, small-group warning 0–25, alternative days 0–30, Outlook horizon 1–183 days | Catches typos; wide enough for any real choice |
+| 2026-11-08 | Per-date overrides via `PUT /days/:date/settings` (closed + blackouts, within 09:00–21:00); refused if they overlap bookings | SPEC §2 lists them as settings but §5.3 has no route; same "don't strand bookings" rule |
+| 2026-11-08 | `GET /settings` is open to Sales too | Sales sees the turnaround and prices the answers depend on; only ops can change them |

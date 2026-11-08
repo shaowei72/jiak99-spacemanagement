@@ -6,11 +6,19 @@ Times are "HH:MM" strings in JSON (the engine uses minutes since midnight).
 from datetime import datetime
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 from pydantic.alias_generators import to_camel
 
 from engine import Alternative, EnquiryResult, NewPlacement
-from engine.rules import TICKET_MINUTES, TICKET_NAMES, TICKET_SHORT_NAMES, TICKET_TYPES, TicketType
+from engine.rules import (
+    CLOSE,
+    OPEN,
+    TICKET_MINUTES,
+    TICKET_NAMES,
+    TICKET_SHORT_NAMES,
+    TICKET_TYPES,
+    TicketType,
+)
 from engine.text import format_time
 from jiak_api import models
 from jiak_api.overview import Board
@@ -75,6 +83,42 @@ class PinIn(ApiModel):
 
     pinned: bool = True
     zone: Literal["A", "B", "C", "D"] | None = None
+
+
+class PriceIn(ApiModel):
+    adult_cents: int = Field(ge=0)
+    child_cents: int = Field(ge=0)
+
+
+class SettingsBody(ApiModel):
+    """GET /settings reply and PUT /settings body (SPEC §2). PUT needs every field."""
+
+    turnaround_minutes: int = Field(ge=0, le=120, description="Zone reset after a session")
+    small_group_warn_below: int = Field(ge=0, le=25, description="0 = off")
+    alternative_day_search: int = Field(ge=0, le=30, description="Days either side")
+    availability_calendar_days: int = Field(ge=1, le=183, description="Outlook horizon")
+    prices: dict[TicketType, PriceIn] | None = Field(description="Per ticket code, or null")
+
+
+class BlackoutIn(ApiModel):
+    start: TimeText
+    end: TimeText
+
+    @model_validator(mode="after")
+    def within_opening_hours(self) -> "BlackoutIn":
+        start, end = parse_time(self.start), parse_time(self.end)
+        if not OPEN <= start < end <= CLOSE:
+            raise ValueError(
+                f"Blackout must run forwards between {format_time(OPEN)} and {format_time(CLOSE)}."
+            )
+        return self
+
+
+class DaySettingsIn(ApiModel):
+    """PUT /days/:date/settings body: close the day and/or block times on every zone."""
+
+    closed: bool
+    blackouts: list[BlackoutIn]
 
 
 # --- responses -------------------------------------------------------------------------------
