@@ -43,6 +43,29 @@ Write a day file in the same format as `apps/cli/examples/week.json` to try real
 `uv run scenarios` checks 29 enquiries against an 8-day test week and compares each answer with the expected
 one. How the scenarios were built and what each one tests: `apps/cli/examples/SCENARIOS.md`.
 
+## API and database
+
+The database is `DATABASE_URL` (default: the SQLite file `jiak99-dev.db` in the repo root). Its tables are created
+and changed only by Alembic migrations in `apps/api/src/jiak_api/migrations/versions/`.
+
+```
+uv run alembic upgrade head                      # create or update the tables (run after every pull)
+uv run uvicorn jiak_api.main:app --reload        # dev server; try the routes at http://127.0.0.1:8000/docs
+```
+
+After changing `models.py`:
+
+```
+uv run alembic revision --autogenerate -m "add no_show to bookings"   # drafts a migration file
+# read the new file and fix it if needed, then:
+uv run alembic upgrade head
+```
+
+Autogenerate is a draft, not the final word: it can't tell a rename from "drop + add" (which loses data), and a new
+required column on a table that already has rows needs a `server_default`. `test_migrations.py` fails if
+`models.py` and the migrations ever disagree. Other useful commands: `uv run alembic current` (which version the
+database is at), `uv run alembic history`, `uv run alembic downgrade -1` (undo the last migration).
+
 ## What the Microsoft 365 admin will need to do
 
 Nothing yet. Needed from Milestone 4 (see `SPEC.md` §5.4): an Entra app registration with `Calendars.ReadWrite`

@@ -1,15 +1,17 @@
 """Database tables (SPEC §3), using SQLAlchemy 2.0.
 
 Times are stored like the engine uses them: `start` is minutes since midnight, `date` is a
-'YYYY-MM-DD' string in Singapore time. Only audit timestamps are real datetimes (in UTC).
+'YYYY-MM-DD' string in Singapore time. Only audit timestamps are real datetimes: always
+timezone-aware, stored and returned in UTC (see UTCDateTime).
 """
 
 import uuid
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, ClassVar
 
-from sqlalchemy import JSON, ForeignKey, Index, String
+from sqlalchemy import JSON, DateTime, Dialect, ForeignKey, Index, String
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+from sqlalchemy.types import TypeDecorator
 
 
 def new_id() -> str:
@@ -21,8 +23,36 @@ def utc_now() -> datetime:
     return datetime.now(UTC)
 
 
+class UTCDateTime(TypeDecorator[datetime]):
+    """A timestamp that always has a timezone: stored in UTC, read back in UTC.
+
+    PostgreSQL keeps the timezone itself ("timestamp with time zone"). SQLite has no timezone
+    support, so there we store the UTC time and add the UTC label back when reading.
+    """
+
+    impl = DateTime(timezone=True)
+    cache_ok = True
+
+    def process_bind_param(self, value: datetime | None, dialect: Dialect) -> datetime | None:
+        """Python -> database. A time without a timezone is a bug, so refuse it."""
+        if value is None:
+            return None
+        if value.tzinfo is None:
+            raise ValueError(f"Timestamp {value} has no timezone; use datetime.now(UTC)")
+        return value.astimezone(UTC)
+
+    def process_result_value(self, value: datetime | None, dialect: Dialect) -> datetime | None:
+        """Database -> Python. Always hand back a UTC time."""
+        if value is None:
+            return None
+        if value.tzinfo is None:  # SQLite: stored as UTC, without the label
+            return value.replace(tzinfo=UTC)
+        return value.astimezone(UTC)
+
+
 class Base(DeclarativeBase):
-    pass
+    # Every `Mapped[datetime]` column uses UTCDateTime, so all timestamps carry a timezone.
+    type_annotation_map: ClassVar[dict[Any, Any]] = {datetime: UTCDateTime}
 
 
 class Customer(Base):

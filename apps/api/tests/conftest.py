@@ -11,21 +11,35 @@ from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import create_engine, text
 
 from jiak_api.clock import Now
 from jiak_api.db import Database
 from jiak_api.main import create_app
+from jiak_api.migrate import upgrade_to_latest
 from jiak_api.models import Base
 
 TODAY = Now(today="2026-11-07", minute=8 * 60)  # 08:00, before opening
 
 
 @pytest.fixture
-def database(tmp_path: Path) -> Iterator[Database]:
+def database_url(tmp_path: Path) -> Iterator[str]:
+    """An empty database: a new SQLite file, or the PostgreSQL one with every table dropped."""
     url = os.environ.get("TEST_DATABASE_URL") or f"sqlite:///{tmp_path / 'test.db'}"
-    database = Database(url)
-    Base.metadata.drop_all(database.engine)
-    Base.metadata.create_all(database.engine)
+    if not url.startswith("sqlite"):
+        engine = create_engine(url)
+        Base.metadata.drop_all(engine)
+        with engine.begin() as connection:
+            connection.execute(text("DROP TABLE IF EXISTS alembic_version"))
+        engine.dispose()
+    yield url
+
+
+@pytest.fixture
+def database(database_url: str) -> Iterator[Database]:
+    """A database built by the Alembic migrations, exactly as production will be."""
+    upgrade_to_latest(database_url)
+    database = Database(database_url)
     yield database
     database.engine.dispose()
 
