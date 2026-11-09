@@ -5,6 +5,7 @@ HTML. With HTMX, a form sends the request in the background and only the result 
 page is replaced. Without JavaScript the same form still works: the whole page is reloaded.
 """
 
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Annotated, Any
 from urllib.parse import urlencode
@@ -13,11 +14,15 @@ from fastapi import APIRouter, Form, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 from pydantic import ValidationError
+from sqlalchemy.orm import Session
 
 from engine import is_valid_date
-from engine.rules import TICKET_NAMES, TICKET_SHORT_NAMES, TICKET_TYPES
-from engine.text import duration_label
-from jiak_api import bookings, models
+from engine.dates import weekday
+from engine.rules import TICKET_NAMES, TICKET_SHORT_NAMES, TICKET_TYPES, TicketType
+from engine.text import duration_label, format_time
+from jiak_api import bookings, models, overview
+from jiak_api.auth import User
+from jiak_api.clock import Now
 from jiak_api.routes import AnyUser, DatabaseDep, DbDep, NowDep, SalesUser, to_enquiry
 from jiak_api.schemas import BookingOut, CheckOut, EnquiryIn
 
@@ -109,7 +114,7 @@ def book_url(date: str, start: str, ticket_type: str, adults: str, children: str
 
 
 def check_url(date: str, start: str, ticket_type: str, adults: str, children: str) -> str:
-    """The link back to the Enquiry check for one option."""
+    """The link back to Check and book for one option."""
     return "/enquiry?" + enquiry_query(date, start, ticket_type, adults, children)
 
 
@@ -129,6 +134,51 @@ templates.env.globals["check_url"] = check_url
 templates.env.globals["people"] = people
 
 
+@dataclass(frozen=True)
+class TicketTimes:
+    """The start times that still fit the group, for one ticket type."""
+
+    ticket_type: TicketType
+    starts: list[str]  # e.g. ['16:00', '16:30']; empty = nothing fits on this day
+    asked: bool  # the ticket the customer asked for
+
+
+@dataclass(frozen=True)
+class TimesPanel:
+    """Every start time that still fits the group on the asked date, per ticket type.
+
+    The asked ticket comes first. This is the availability board, cut down to what can be sold.
+    """
+
+    date: str
+    weekday: str
+    people: int
+    closed: bool
+    tickets: list[TicketTimes]
+
+
+def times_panel(db: Session, enquiry: EnquiryIn, now: Now) -> TimesPanel:
+    """The times panel for an enquiry's date and group size."""
+    people = enquiry.adults + enquiry.children
+    board = overview.board_for(db, enquiry.date, people, now)
+    starts: dict[str, list[str]] = {code: [] for code in TICKET_TYPES}
+    for slot in board.slots:
+        if slot.status == "available":
+            starts[slot.ticket_type].append(format_time(slot.start))
+    order = [enquiry.ticket_type] + [code for code in TICKET_TYPES if code != enquiry.ticket_type]
+    tickets = [
+        TicketTimes(ticket_type=code, starts=starts[code], asked=code == enquiry.ticket_type)
+        for code in order
+    ]
+    return TimesPanel(
+        date=enquiry.date,
+        weekday=weekday(enquiry.date),
+        people=people,
+        closed=board.closed,
+        tickets=tickets,
+    )
+
+
 def is_htmx(request: Request) -> bool:
     """True if HTMX sent the request: it wants only a part of the page back."""
     return request.headers.get("HX-Request") == "true"
@@ -137,7 +187,7 @@ def is_htmx(request: Request) -> bool:
 def render(
     request: Request, part: str, context: dict[str, Any], status_code: int = 200
 ) -> Response:
-    """Answer with just the template `part` for HTMX, or the whole Enquiry check page with
+    """Answer with just the template `part` for HTMX, or the whole Check and book page with
     `part` shown under the form.
 
     Never cached: every answer depends on what is booked right now.
@@ -158,7 +208,7 @@ def render(
 
 @router.get("/")
 def home() -> RedirectResponse:
-    """The start page is the Enquiry check."""
+    """The start page is Check and book."""
     return RedirectResponse("/enquiry")
 
 
@@ -174,15 +224,26 @@ def enquiry_page(
     adults: Annotated[str | None, Query()] = None,
     children: Annotated[str | None, Query()] = None,
 ) -> Response:
-    """The Enquiry check page. With the form filled in, it also shows the verdict."""
+    """The Check and book page. With the form filled in, it shows the verdict on the asked
+    time and every other time that fits the group that day. Without a start time it shows
+    only the times ("what do you have on Saturday for 40?").
+    """
     form = enquiry_form(now.today, date, start, type, adults, children)
     errors: list[str] = []
     check: CheckOut | None = None
+    times: TimesPanel | None = None
     if date is not None:  # the form was sent
-        enquiry, errors = form_errors(form)
+        any_time = not form["start"]
+        if any_time:
+            # Check the other fields with a stand-in time; the time itself isn't used.
+            enquiry, errors = form_errors({**form, "start": "09:00"})
+        else:
+            enquiry, errors = form_errors(form)
         if enquiry is not None:
-            check = CheckOut.from_engine(bookings.check(db, to_enquiry(enquiry), now))
-    context: dict[str, Any] = {"form": form, "errors": errors, "check": check}
+            times = times_panel(db, enquiry, now)
+            if not any_time:
+                check = CheckOut.from_engine(bookings.check(db, to_enquiry(enquiry), now))
+    context: dict[str, Any] = {"form": form, "errors": errors, "check": check, "times": times}
     return render(request, "_check_result.html", context)
 
 
@@ -301,15 +362,42 @@ def book(
     return response
 
 
+# What the booking page says after a change, by the `done` query value.
+DONE_MESSAGES = {
+    "changed": "Booking changed.",
+    "cancelled": "Booking cancelled. Its zones are free again.",
+    "no_show": "Marked as no-show. Its zones are free again.",
+}
+
+
 @router.get("/bookings/{booking_id}", response_class=HTMLResponse)
 def booking_page(
-    request: Request, booking_id: str, db: DbDep, now: NowDep, _user: AnyUser
+    request: Request,
+    booking_id: str,
+    db: DbDep,
+    now: NowDep,
+    user: AnyUser,
+    done: Annotated[str | None, Query()] = None,
 ) -> Response:
-    """One booking: who, when, which ticket, how many."""
+    """One booking: who, when, which ticket, how many, and what can be done with it."""
     row = db.get(models.Booking, booking_id)
     if row is None:
         form = enquiry_form(now.today, None, None, None, None, None)
         return render(request, "_not_found.html", {"form": form}, status_code=404)
+    return booking_view(request, row, now, user, done=DONE_MESSAGES.get(done or ""))
+
+
+def booking_view(
+    request: Request,
+    row: models.Booking,
+    now: Now,
+    user: User,
+    *,
+    done: str | None = None,
+    errors: list[str] | None = None,
+    status_code: int = 200,
+) -> Response:
+    """The booking's page, optionally with a 'done' message or error messages."""
     booking = BookingOut.from_row(row)
     form = enquiry_form(
         now.today,
@@ -319,4 +407,13 @@ def booking_page(
         str(booking.adults),
         str(booking.children),
     )
-    return render(request, "_booking.html", {"form": form, "booking": booking})
+    confirmed = booking.status == "confirmed"
+    context = {
+        "form": form,
+        "booking": booking,
+        "done": done,
+        "errors": errors or [],
+        "can_change": confirmed and user.can("Sales"),
+        "can_no_show": confirmed and user.can("Operations") and bookings.has_started(row, now),
+    }
+    return render(request, "_booking.html", context, status_code=status_code)

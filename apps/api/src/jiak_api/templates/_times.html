@@ -1,0 +1,21 @@
+{# Every start time that still fits the group on the asked date, the asked ticket first.
+   A time is a plain link: the whole page reloads, so the form shows the chosen time too. #}
+<section class="times" aria-label="Times that fit">
+  <h2>Times that fit on {{ times.weekday }} {{ times.date }} for {{ times.people }}</h2>
+  {% if times.closed %}
+  <p class="detail">Closed on this date.</p>
+  {% else %}
+  {% for t in times.tickets %}
+  <div class="ticket-times{{ ' asked' if t.asked }}">
+    <p class="ticket-name" title="{{ ticket_names[t.ticket_type] }}">{{ short_names[t.ticket_type] }}{% if t.asked %} <span class="detail">(asked)</span>{% endif %}</p>
+    {% if t.starts %}
+    <p class="chips">
+      {% for start in t.starts %}<a class="chip{{ ' current' if t.asked and start == form.start }}" href="{{ check_url(times.date, start, t.ticket_type, form.adults, form.children) }}">{{ start }}</a>{% endfor %}
+    </p>
+    {% else %}
+    <p class="detail">Nothing fits this group on this day.</p>
+    {% endif %}
+  </div>
+  {% endfor %}
+  {% endif %}
+</section>

@@ -1,7 +1,7 @@
 {% extends "base.html" %}
-{% block title %}Enquiry check{% endblock %}
+{% block title %}Check and book{% endblock %}
 {% block content %}
-<h1>Enquiry check</h1>
+<h1>Check and book</h1>
 
 {# hx-get: send the form in the background and put the answer into #result.
    hx-push-url: the address bar shows the enquiry, so the link can be shared or reloaded. #}
@@ -10,8 +10,8 @@
   <label>Date
     <input type="date" name="date" value="{{ form.date }}" required>
   </label>
-  <label>Start
-    <input type="time" name="start" value="{{ form.start }}" step="900" required>
+  <label>Start (empty = any time)
+    <input type="time" name="start" value="{{ form.start }}" step="900">
   </label>
   <label class="wide">Ticket
     <select name="type">

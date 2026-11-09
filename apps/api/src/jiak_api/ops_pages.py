@@ -391,7 +391,7 @@ def ops_day_page(
     _user: AnyUser,
     date: Annotated[str | None, Query()] = None,
 ) -> Response:
-    """Operations view of one day: zones x time, dead gaps shaded, allocate / lock / pin."""
+    """The Day plan: one day for operations, zones x time, dead gaps shaded, allocate / lock / pin."""
     return ops_page(request, db, date_or_today(date, now.today))
 
 

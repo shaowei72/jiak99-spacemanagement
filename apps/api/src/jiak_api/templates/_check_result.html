@@ -1,4 +1,4 @@
-{# The answer part of the Enquiry check page. HTMX swaps just this in after each check. #}
+{# The answer part of the Check and book page. HTMX swaps just this in after each check. #}
 {% if errors %}
 <div class="card errors">
   <ul>
@@ -45,4 +45,8 @@
   {% endfor %}
 </ul>
 {% endif %}
+{% endif %}
+
+{% if times and not errors %}
+{% include "_times.html" %}
 {% endif %}

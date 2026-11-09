@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}Cancel booking{% endblock %}
+{% block content %}
+<h1>Cancel booking?</h1>
+{% include "_errors.html" %}
+<div class="card verdict no">
+  <p><strong>{{ booking.customer.name }}</strong>{% if booking.customer.company %} · {{ booking.customer.company }}{% endif %}</p>
+  <p>{{ booking.date }} · {{ booking.start }} · {{ short_names[booking.ticket_type] }} – {{ ticket_names[booking.ticket_type] }}</p>
+  <p>{{ people(booking.adults, booking.children) }}</p>
+</div>
+{% if booking.status == "confirmed" %}
+<p>Its zones become free and can be sold again. This can't be undone; to restore it, book again.</p>
+<form method="post" action="/bookings/{{ booking.id }}/cancel" class="buttons">
+  <button type="submit" class="danger-button">Yes, cancel this booking</button>
+  <a href="/bookings/{{ booking.id }}">No, keep it</a>
+</form>
+{% else %}
+<p class="detail">This booking is already {{ booking.status | replace("_", " ") }}. <a href="/bookings/{{ booking.id }}">Back to the booking</a></p>
+{% endif %}
+{% endblock %}

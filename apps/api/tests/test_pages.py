@@ -1,4 +1,4 @@
-"""The Enquiry check web page (Milestone 3)."""
+"""The Check and book web page (Milestone 3)."""
 
 from fastapi.testclient import TestClient
 
@@ -68,7 +68,7 @@ def test_a_full_slot_shows_not_possible_with_alternatives(client: TestClient) ->
 
 
 def test_form_mistakes_are_explained(client: TestClient) -> None:
-    page = client.get("/enquiry?date=2026-02-30&start=&type=PREMIUM&adults=x", headers=HTMX).text
+    page = client.get("/enquiry?date=2026-02-30&start=abc&type=PREMIUM&adults=x", headers=HTMX).text
     assert "Pick a start time" in page
     assert "Adults must be a whole number" in page
 
@@ -87,3 +87,82 @@ def test_sales_may_use_the_page(client: TestClient) -> None:
 def test_styles_and_htmx_are_served(client: TestClient) -> None:
     assert client.get("/static/app.css").status_code == 200
     assert "htmx" in client.get("/static/vendor/htmx.min.js").text
+
+
+# --- times that fit (the availability board, folded into Check and book) ---------------------
+
+
+def fill_morning(client: TestClient) -> None:
+    """All four zones busy 09:00-12:00 on 2026-12-01."""
+    for name in ("A", "B", "C", "D"):
+        booking = {
+            "date": "2026-12-01",
+            "start": "09:00",
+            "type": "PREMIUM_CT",
+            "adults": 25,
+            "customer": {"name": f"Morning {name}"},
+        }
+        assert client.post("/api/bookings", json=booking).status_code == 201
+
+
+def test_page_is_called_check_and_book(client: TestClient) -> None:
+    page = client.get("/enquiry").text
+    assert "<h1>Check and book</h1>" in page
+    assert 'href="/board"' not in page  # the board is part of this page now
+
+
+def test_result_lists_the_other_times_that_fit(client: TestClient) -> None:
+    fill_morning(client)
+    query = "date=2026-12-01&start=10:00&type=PREMIUM&adults=10"
+    page = client.get(f"/enquiry?{query}", headers=HTMX).text
+    assert "Not possible" in page
+    assert "Times that fit on Tue 2026-12-01 for 10" in page
+    panel = page[page.index("Times that fit") :]
+    assert ">11:30<" not in panel  # zones still busy until 12:00
+    assert ">12:00<" in panel
+    assert ">19:00<" in panel  # last PHE start
+    assert ">19:30<" in panel  # only for the Classic tickets
+    # The asked ticket comes first, and a time links to its check.
+    assert panel.index("PHE <span") < panel.index("CHE")
+    assert "/enquiry?date=2026-12-01&amp;start=12:00&amp;type=PREMIUM&amp;adults=10" in panel
+
+
+def test_without_a_start_time_only_the_times_are_shown(client: TestClient) -> None:
+    query = "date=2026-12-01&start=&type=CLASSIC&adults=40&children=2"
+    page = client.get(f"/enquiry?{query}", headers=HTMX).text
+    assert "Times that fit on Tue 2026-12-01 for 42" in page
+    assert "Good fit" not in page
+    assert "Not possible" not in page
+    assert "Pick a start time" not in page
+
+
+def test_the_asked_time_is_highlighted(client: TestClient) -> None:
+    page = client.get("/enquiry?date=2026-12-01&start=14:00&type=PREMIUM&adults=5").text
+    assert 'class="chip current"' in page
+    assert 'value="14:00"' in page
+
+
+def test_a_full_day_and_a_closed_day(client: TestClient) -> None:
+    # Four 3-hour sessions back to back fill every zone from 09:00 to 21:00.
+    for name in ("A", "B", "C", "D"):
+        for start in ("09:00", "12:00", "15:00", "18:00"):
+            booking = {
+                "date": "2026-12-01",
+                "start": start,
+                "type": "PREMIUM_CT",
+                "adults": 25,
+                "customer": {"name": f"{name} {start}"},
+            }
+            client.post("/api/bookings", json=booking)
+    page = client.get("/enquiry?date=2026-12-01&start=&type=PREMIUM&adults=5", headers=HTMX).text
+    assert "Nothing fits this group on this day." in page
+
+    client.put("/api/days/2026-12-02/settings", json={"closed": True, "blackouts": []})
+    page = client.get("/enquiry?date=2026-12-02&start=&type=PREMIUM&adults=5", headers=HTMX).text
+    assert "Closed on this date." in page
+
+
+def test_no_times_when_the_form_has_mistakes(client: TestClient) -> None:
+    page = client.get("/enquiry?date=2026-12-01&start=&type=PREMIUM&adults=0", headers=HTMX).text
+    assert "at least one person" in page
+    assert "Times that fit" not in page
