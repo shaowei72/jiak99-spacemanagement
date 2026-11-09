@@ -1,4 +1,4 @@
-"""Enquiry-check rules beyond the acceptance tests: validity, zone sharing, splits, warnings."""
+"""Enquiry-check rules beyond the acceptance tests: validity, zone slots, splits, warnings."""
 
 import pytest
 
@@ -10,6 +10,7 @@ from engine import (
     NewPlacement,
     Price,
     SearchBudget,
+    Session,
     Settings,
     SplitPlacement,
     add_days,
@@ -17,8 +18,9 @@ from engine import (
     check_enquiry,
 )
 from engine.alternatives import _Candidate, _rank
+from engine.evaluate import group_sizes
 from engine.rules import TICKET_TYPES, TicketType, is_downgrade
-from engine_helpers import DEFAULTS, TODAY, enquiry, schedule, session, t
+from engine_helpers import DEFAULTS, TODAY, enquiry, pinned, schedule, session, t
 
 
 def check(day: dict[str, DayState], request: Enquiry, cfg: Settings = DEFAULTS, **kw: int) -> str:
@@ -42,8 +44,20 @@ def test_unknown_ticket_type_is_not_possible() -> None:
     assert "Unknown ticket type" in check(schedule(), enquiry("10:00", "T60", 4))  # type: ignore[arg-type]
 
 
-def test_session_pinned_to_unknown_zone_makes_day_infeasible() -> None:
-    assert not assign([session("10:00", "CLASSIC", 4, zone="E", pinned=True)], DEFAULTS).ok
+@pytest.mark.parametrize(
+    ("ticket_type", "route"),
+    [
+        ("PREMIUM", "ABC"),  # a zone missing
+        ("CLASSIC", "BD"),  # every Classic visits A
+        ("CLASSIC_CT", "ABC"),  # Classic + CT always visits D
+        ("TINGKAT", "A"),  # Tingkat is never in A
+        ("PREMIUM", "ABCE"),  # no zone E
+    ],
+)
+def test_session_pinned_to_an_invalid_route_makes_day_infeasible(
+    ticket_type: TicketType, route: str
+) -> None:
+    assert not assign([pinned("10:00", ticket_type, route)], DEFAULTS).ok
 
 
 def test_past_date_and_past_time() -> None:
@@ -75,66 +89,119 @@ def test_blackout_blocks_overlapping_requests_only() -> None:
     assert result.verdict != "NOT_POSSIBLE"
 
 
-# --- a zone taken by a group is sold out -----------------------------------------------------
+def test_ending_after_close_names_the_length() -> None:
+    assert check(schedule(), enquiry("20:30", "CLASSIC", 4)) == (
+        "A 1 h CHE from 20:30 would end after the 21:00 close."
+    )
+    assert check(schedule(), enquiry("19:30", "PREMIUM", 4)) == (
+        "A 2 h PHE from 19:30 would end after the 21:00 close."
+    )
 
 
-@pytest.mark.parametrize("ticket_type", ["PREMIUM", "CLASSIC", "CLASSIC_CT"])
-def test_a_group_never_shares_a_zone(ticket_type: TicketType) -> None:
-    """Same slot, same or other ticket type: the 5-person zone is sold out all the same."""
+@pytest.mark.parametrize(
+    "broken",
+    [
+        Session("x", TODAY, t("10:15"), "CLASSIC", 4),  # off the 30-min grid
+        Session("x", TODAY, t("08:30"), "CLASSIC", 4),  # before opening
+        Session("x", TODAY, t("20:30"), "CLASSIC", 4),  # ends after closing
+        Session("x", TODAY, t("10:00"), "T60", 4),  # type: ignore[arg-type]
+    ],
+)
+def test_a_session_that_cannot_be_scheduled_makes_the_day_infeasible(broken: Session) -> None:
+    assert not assign([broken], DEFAULTS).ok
+
+
+def test_day_with_clashing_pins_still_explains_itself() -> None:
+    day = schedule(pinned("10:00", "CLASSIC", "AD"), pinned("10:00", "PREMIUM", "ABCD"))
+    result = check_enquiry(day, DEFAULTS, enquiry("10:00", "CLASSIC", 4), today=TODAY)
+    assert result.verdict == "NOT_POSSIBLE"
+    assert result.reason == "No order of zones fits 10:00–11:00 around the other groups."
+
+
+# --- one group per zone slot ----------------------------------------------------------------
+
+
+@pytest.mark.parametrize("ticket_type", ["TINGKAT", "CLASSIC", "CLASSIC_CT", "PREMIUM"])
+def test_a_group_never_shares_a_zone_slot(ticket_type: TicketType) -> None:
+    """Same start, same or other ticket type: the 5-person group's zone slots are sold out."""
     existing = session("11:00", "PREMIUM", 5)
     result = check_enquiry(
         schedule(existing), DEFAULTS, enquiry("11:00", ticket_type, 6), today=TODAY
     )
-    assert result.placement == NewPlacement(people=6)
+    assert isinstance(result.placement, NewPlacement)
+    assert result.placement.people == 6
     assert result.zone_minutes_added > 0
-
-
-def test_alternatives_never_suggest_joining_a_group() -> None:
-    small_group = session("10:30", "PREMIUM", 5)
-    result = check_enquiry(
-        schedule(small_group), DEFAULTS, enquiry("10:00", "PREMIUM", 4), today=TODAY
-    )
-    assert result.alternatives
-    assert all("Join" not in a.gain_summary for a in result.alternatives)
-    assert all(a.verdict == "ACCEPT_GOOD" for a in result.alternatives)
 
 
 # --- groups over 25 -------------------------------------------------------------------------
 
 
-def test_big_group_takes_whole_zones_even_if_the_slot_has_spare_seats() -> None:
+@pytest.mark.parametrize(
+    ("people", "sizes"),
+    [
+        (1, (1,)),
+        (25, (25,)),
+        (26, (13, 13)),
+        (27, (14, 13)),
+        (40, (20, 20)),
+        (51, (17, 17, 17)),
+        (60, (20, 20, 20)),
+        (101, (21, 20, 20, 20, 20)),
+    ],
+)
+def test_groups_are_split_as_evenly_as_possible(people: int, sizes: tuple[int, ...]) -> None:
+    assert group_sizes(people) == sizes
+
+
+def test_split_reason_lists_sizes_and_routes() -> None:
     existing = session("09:00", "PREMIUM", 20)
     result = check_enquiry(
         schedule(existing), DEFAULTS, enquiry("09:00", "PREMIUM", 30), today=TODAY
     )
-    assert result.placement == SplitPlacement(new_sessions=(25, 5))
-    assert result.reason.startswith("Group of 30 at 09:00 · PHE needs 2 zones (25 + 5).")
-
-
-def test_big_group_needing_more_zones_than_free() -> None:
-    day = schedule(*(session("09:00", "PREMIUM_CT", 25) for _ in range(3)))
-    reason = check(day, enquiry("10:00", "PREMIUM", 40))
-    assert reason == "Only 1 zone free at 10:00; this group needs 2."
-
-
-def test_pinned_sessions_can_block_without_all_zones_busy() -> None:
-    # A and B are pinned with gaps that don't line up; C and D are busy all day.
-    day = schedule(
-        session("09:00", "PREMIUM", 5, zone="A", pinned=True),
-        session("12:00", "PREMIUM_CT", 5, zone="A", pinned=True),
-        session("10:00", "PREMIUM", 5, zone="B", pinned=True),
-        session("13:00", "PREMIUM_CT", 5, zone="B", pinned=True),
-        *(
-            session(start, "PREMIUM_CT", 5, zone=zone, pinned=True)
-            for zone in "CD"
-            for start in ("09:00", "12:00", "15:00", "18:00")
-        ),
+    assert isinstance(result.placement, SplitPlacement)
+    assert result.placement.new_sessions == (15, 15)
+    routes = ", ".join(result.placement.routes)
+    assert result.reason == (
+        f"Group of 30 at 09:00 · PHE is split into 2 groups (15 + 15). "
+        f"Fits (routes {routes}) with no unsellable slots."
     )
-    reason = check(day, enquiry("11:00", "PREMIUM", 4))
-    assert reason == "No zone is free for 11:00–13:00 without moving pinned or locked sessions."
+
+
+def test_needed_zones_that_are_full_are_named() -> None:
+    """Three PHE+CT groups at 09:00 fill zones B and C from 09:00 to 12:00; every PHE needs both."""
+    day = schedule(*(session("09:00", "PREMIUM_CT", 25) for _ in range(3)))
+    assert check(day, enquiry("10:00", "PREMIUM", 4)) == "Zones B and C are in use 10:00–12:00."
+
+
+def test_split_group_short_of_a_needed_zone() -> None:
+    reason = check(schedule(), enquiry("10:00", "CLASSIC", 60))
+    assert reason == (
+        "Group of 60 at 10:00 · CHE needs 3 groups (20 + 20 + 20), "
+        "but zone A has room for only 2 groups in 10:00–11:00. "
+        "Try booking part of the group at another time."
+    )
+
+
+def test_no_route_fits_although_no_zone_is_full() -> None:
+    # Every zone is taken at 10:00 and free at 10:30: a Classic at 10:00 has no order that works.
+    day = schedule(
+        pinned("09:30", "CLASSIC", "DA"),
+        pinned("10:00", "TINGKAT", "B"),
+        pinned("10:00", "TINGKAT", "C"),
+        pinned("10:00", "TINGKAT", "D"),
+    )
+    assert check(day, enquiry("10:00", "CLASSIC", 4)) == (
+        "No order of zones fits 10:00–11:00 around the other groups."
+    )
 
 
 # --- costly warnings ------------------------------------------------------------------------
+
+
+def test_good_reason_names_the_route() -> None:
+    result = check_enquiry(schedule(), DEFAULTS, enquiry("09:00", "PREMIUM", 8), today=TODAY)
+    assert isinstance(result.placement, NewPlacement)
+    assert result.reason == f"Fits (route {result.placement.route}) with no unsellable slots."
 
 
 def test_small_group_warning_is_advisory() -> None:
@@ -146,17 +213,17 @@ def test_small_group_warning_is_advisory() -> None:
     assert big_enough.verdict == "ACCEPT_GOOD"
 
 
-def test_same_dead_gap_in_two_zones_is_counted_not_repeated() -> None:
-    # All zones busy 09:00–10:30. A group of 50 at 11:00 needs two zones, each left with a
-    # dead 10:30–11:00 gap.
-    day = schedule(*(session("09:00", "CLASSIC", 25) for _ in range(4)))
-    result = check_enquiry(day, DEFAULTS, enquiry("11:00", "CLASSIC", 50), today=TODAY)
-    assert result.verdict == "ACCEPT_COSTLY"
-    assert result.dead_minutes_delta == 60
-    assert result.reason == (
-        "Group of 50 at 11:00 · CHE needs 2 zones (25 + 25). "
-        "Fits, but leaves 10:30–11:00 in 2 zones unsellable."
+def test_tingkat_is_ignored_when_judging_waste() -> None:
+    """A free zone slot only Tingkat could use still counts as unsellable (T6 without pins)."""
+    day = schedule(
+        pinned("19:00", "PREMIUM", "ABCD"),
+        pinned("19:00", "PREMIUM", "BCDA"),
+        pinned("19:00", "PREMIUM", "CDAB"),
+        pinned("19:00", "CLASSIC", "DA"),
     )
+    plan = assign(day[TODAY].sessions, DEFAULTS)
+    assert plan.ok
+    assert plan.dead_minutes == 60
 
 
 # --- ranking --------------------------------------------------------------------------------
@@ -170,6 +237,11 @@ DOWNGRADES = {
     ("PREMIUM_CT", "PREMIUM"),
     ("CLASSIC_CT", "CLASSIC"),
     ("CLASSIC_CT", "PREMIUM"),
+    # Tingkat is below everything else, so it is never offered instead of another ticket.
+    ("CLASSIC", "TINGKAT"),
+    ("CLASSIC_CT", "TINGKAT"),
+    ("PREMIUM", "TINGKAT"),
+    ("PREMIUM_CT", "TINGKAT"),
 }
 
 
@@ -181,7 +253,7 @@ def test_what_counts_as_a_downgrade(asked: TicketType, offered: TicketType) -> N
 
 @pytest.mark.parametrize(
     ("start", "ticket_type"),
-    [("19:30", "PREMIUM"), ("19:00", "CLASSIC_CT"), ("18:30", "PREMIUM_CT")],
+    [("19:30", "PREMIUM"), ("20:00", "CLASSIC_CT"), ("18:30", "PREMIUM_CT"), ("20:30", "CLASSIC")],
 )
 def test_alternatives_never_suggest_a_downgrade(start: str, ticket_type: TicketType) -> None:
     result = check_enquiry(schedule(), DEFAULTS, enquiry(start, ticket_type, 8), today=TODAY)
@@ -189,16 +261,16 @@ def test_alternatives_never_suggest_a_downgrade(start: str, ticket_type: TicketT
     assert not any(is_downgrade(ticket_type, a.ticket_type) for a in result.alternatives)
 
 
-def test_alternatives_can_suggest_an_upgrade() -> None:
-    """19:00 Classic ends 20:30, leaving 30 dead minutes; Premium fills to 21:00."""
-    result = check_enquiry(schedule(), DEFAULTS, enquiry("19:00", "CLASSIC", 8), today=TODAY)
-    assert result.verdict == "ACCEPT_COSTLY"
-    assert [(a.start, a.ticket_type) for a in result.alternatives] == [
-        (t("19:30"), "CLASSIC"),
-        (t("19:00"), "PREMIUM"),
-        (t("18:00"), "CLASSIC"),
-    ]
-    assert result.alternatives[1].change_summary == "PHE instead of CHE"
+def test_tingkat_request_can_be_offered_an_upgrade() -> None:
+    """B, C and D are full at 10:00 but A is free all morning, and from 10:30 B is free again."""
+    day = schedule(
+        pinned("10:00", "TINGKAT", "B"),
+        pinned("10:00", "TINGKAT", "C"),
+        pinned("10:00", "TINGKAT", "D"),
+    )
+    result = check_enquiry(day, DEFAULTS, enquiry("10:00", "TINGKAT", 4), today=TODAY)
+    assert result.verdict == "NOT_POSSIBLE"
+    assert (t("10:00"), "CLASSIC") in [(a.start, a.ticket_type) for a in result.alternatives]
 
 
 def test_prices_break_ties_towards_higher_revenue() -> None:
@@ -206,8 +278,11 @@ def test_prices_break_ties_towards_higher_revenue() -> None:
     asked = enquiry("10:00", "CLASSIC", 4)
     to_premium = _Candidate(TODAY, t("10:00"), "PREMIUM", 0, True, 0)
     to_premium_ct = _Candidate(TODAY, t("10:00"), "PREMIUM_CT", 0, True, 0)
-    good = EnquiryResult("ACCEPT_GOOD", NewPlacement(4), 0, 120, "Fits.")
-    prices = {"PREMIUM": Price(2000, 1000), "PREMIUM_CT": Price(3000, 1500)}
+    good = EnquiryResult("ACCEPT_GOOD", NewPlacement(4, "ABCD"), 0, 120, "Fits.")
+    prices: dict[TicketType, Price] = {
+        "PREMIUM": Price(2000, 1000),
+        "PREMIUM_CT": Price(3000, 1500),
+    }
 
     def order(cfg: Settings) -> list[str]:
         ranked = sorted([to_premium_ct, to_premium], key=lambda c: _rank(c, good, asked, cfg))
@@ -219,7 +294,7 @@ def test_prices_break_ties_towards_higher_revenue() -> None:
 
 def test_expired_budget_still_gives_a_valid_answer() -> None:
     always_late = SearchBudget(0, clock=lambda: 1.0)
-    day = schedule(*(session("09:00", "CLASSIC", 25) for _ in range(3)))
+    day = schedule(*(session("09:00", "PREMIUM", 25) for _ in range(3)))
     result = check_enquiry(
         day, DEFAULTS, enquiry("11:00", "CLASSIC", 5), today=TODAY, budget=always_late
     )

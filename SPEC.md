@@ -345,7 +345,8 @@ Sync rules:
 5. **Outlook add-in** — task pane hosting the Enquiry check page; "Book" creates the booking via the API (which
    writes the Outlook event).
 6. **Phase 2 (only when asked)** — consolidation suggestions, day-of changes (walk-ins, late arrivals), run sheet,
-   metrics dashboard.
+   metrics dashboard. **To do:** suggest splitting a large group across start times (e.g. 60 · CHE → 30 at 10:00 +
+   30 at 11:00), and bookings with more than one start time. Until then sales book each part as its own booking.
 
 ---
 
@@ -372,7 +373,7 @@ re-check it by hand and ask the owner before changing either the test or the rul
 | T10 | Any | Date 184 days ahead | `NOT_POSSIBLE`, reason mentions the 6-month window |
 | T11 | Two 10:00 · CLASSIC sessions with 1 person each (routes `AD` and `DA`) | 10:00 · CLASSIC · 1 | `NOT_POSSIBLE`, "Zone A is in use 10:00–11:00" (taken zone slots are sold out whatever the group size) |
 | T12 | Empty | 09:00 · PREMIUM · 26 | `ACCEPT_GOOD`, split into 13 + 13 |
-| T13 | Empty | 10:00 · CLASSIC · 60 | `NOT_POSSIBLE`: 3 groups of 20 would each need zone A within the same hour, but A holds only 2 groups per hour. 1st alternative 10:00 · PREMIUM (GOOD, 3 × 20) |
+| T13 | Empty | 10:00 · CLASSIC · 60 | `NOT_POSSIBLE`: 3 groups of 20 would each need zone A within the same hour, but A holds only 2 groups per hour. The reason says so and adds "Try booking part of the group at another time." Alternatives include an upgrade (GOOD); which upgrade comes first is not fixed |
 | T14 | Empty | 20:30 · TINGKAT · 4 | `ACCEPT_GOOD`; route is `B`, `C` or `D` |
 | T15 | Empty | 09:00 · PREMIUM_CT · 10 | Accepted; route has 4 letters, B and C are each one continuous hour, the stay is 09:00–12:00 |
 | T16 | Two pinned TINGKAT sessions in D at 10:00 and 10:30 | 10:00 · CLASSIC · 10 | Accepted; route uses A plus B or C (not D) |

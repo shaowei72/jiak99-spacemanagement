@@ -44,10 +44,10 @@ class _Candidate:
 
 
 def _quality(result: EnquiryResult) -> tuple[int, int, int]:
-    """How well a result uses space (lower is better): verdict, dead minutes, zones taken.
+    """How well a result uses space (lower is better): verdict, dead minutes, sub-groups.
 
-    SPEC §4.4 criterion 3 says zoneMinutesAdded; we compare the number of zones instead, so a
-    shorter ticket isn't preferred just for being shorter (see DECISIONS.md; T5 needs this).
+    SPEC §4.4 criterion 3 says zoneMinutesAdded; we compare the number of sub-groups instead,
+    so a shorter ticket isn't preferred just for being shorter (see DECISIONS.md).
     """
     return (_VERDICT_RANK[result.verdict], result.dead_minutes_delta, result.new_session_count)
 
@@ -78,8 +78,9 @@ def find_alternatives(
 def _same_day_candidates(enquiry: Enquiry) -> list[_Candidate]:
     """Shift time (same type, ±30 and ±60 min) and change type (same start, upgrades only).
 
-    There is no "join a nearby session" candidate: a zone taken by a group is sold out (SPEC §2).
-    A downgrade (lower level, or losing the Chef's Table) is never suggested.
+    There is no "join another group" candidate: a zone slot taken by a group is sold out
+    (SPEC §2). A downgrade (lower level, or losing the Chef's Table) is never suggested, and
+    Tingkat counts as below every other ticket, so it is never offered instead of one.
     """
     candidates = [
         _Candidate(
@@ -175,7 +176,7 @@ def _describe(candidate: _Candidate, result: EnquiryResult, enquiry: Enquiry) ->
     change_summary = change_summary[:1].upper() + change_summary[1:]
 
     if result.verdict == "ACCEPT_GOOD":
-        gain_summary = "Fits with no unsellable gaps"
+        gain_summary = "Fits with no unsellable slots"
     else:
         gain_summary = result.reason
 

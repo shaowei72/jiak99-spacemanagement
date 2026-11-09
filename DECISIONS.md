@@ -15,8 +15,8 @@
 | 2026-11-07 | §4.4 criterion 3 compares the number of new sessions, not zone minutes | Acceptance test T5 ranks 19:00 · 2 h above 19:30 · 1.5 h; raw zone minutes would always push shorter tickets |
 | 2026-11-07 | "Strictly better" alternative = better on verdict, then dead minutes, then new sessions | Change size is 0 for the request itself, so including it would rule out every alternative |
 | 2026-11-07 | Final ranking tie-breaks: nearer day, earlier start, shorter ticket | Makes results deterministic; T1 expects 09:00 before 11:00 |
-| 2026-11-07 | `assign` is a memoised exact search (DP) instead of plain branch-and-bound | Same optimum, much faster; p95 enquiry check measured at ≈ 16 ms |
-| 2026-11-07 | Blackouts apply to all zones and block turnaround too; gaps before a blackout need no turnaround | Spec silent; simplest consistent rule |
+| 2026-11-07 | ~~`assign` is a memoised exact search (DP) instead of plain branch-and-bound~~ — superseded 2026-11-09 (zone routes) | Same optimum, much faster; p95 enquiry check measured at ≈ 16 ms |
+| 2026-11-07 | ~~Blackouts apply to all zones and block turnaround too; gaps before a blackout need no turnaround~~ — superseded 2026-11-09 (zone routes) | Spec silent; simplest consistent rule |
 | 2026-11-07 | `today` (and optionally the current minute) are passed into the engine | Engine never reads the calendar; booking window and "past" checks stay testable |
 | 2026-11-07 | Engine `Session` carries adults/children totals, not individual bookings | Engine only needs headcount and revenue; the API sums confirmed bookings |
 | 2026-11-07 | Added `apps/cli` (`uv run check …`) for MVP 0 | Lets sales try real enquiries before any screens exist |
@@ -102,3 +102,10 @@
 | 2026-11-09 | Sales' manual Outlook format stays `[TICKET] HH:MM · nA mC · Name` (now also `[TINGKAT]`); the app rewrites it to the new subject | Owner |
 | 2026-11-09 | Acceptance tests T1–T17 rewritten for the v0.4 rules (hand-worked expectations) | Old tests assumed identical zones and one zone per group |
 | 2026-11-09 | New Milestone 3R reworks engine, database, examples, CLI and pages for zone routes before Outlook sync (M4); example days only, no real data yet | Owner: sort out the changes before real data goes in |
+| 2026-11-09 | Engine: `Session.zone_id` → `Session.route` (zone letters in order, e.g. `ABDC`); placements carry the route(s), a split as parallel tuples `new_sessions` + `routes` | One stored value says both which zones and in what order |
+| 2026-11-09 | `assign` is an exact search over routes: a "can the rest still fit?" search remembering only slots from the current start on, plus a fewest-dead-slots search with branch-and-bound (slots already dead before the current start can't recover) | Zones aren't interchangeable any more, so the old per-zone DP no longer applies; measured p95 ≈ 210 ms on half-full days, ≈ 35 ms on full days |
+| 2026-11-09 | Once the search budget is spent, the rest of a plan takes the first route that fits at each step | Never backtracks after the deadline; feasibility stays exact |
+| 2026-11-09 | Blackouts block every 30-min slot they touch; a zone's reset time may run into a blackout or closing time | Spec silent; widest sales options (a reset can happen while nothing is sold) |
+| 2026-11-09 | "Not possible" reasons look at the day's current plan within the asked time: a needed zone full (e.g. "Zone A is in use 10:00–11:00"), all usable zones full, a split group short of room in a needed zone, else "No order of zones fits …" | Plain answers sales can repeat; the general one is always true |
+| 2026-11-09 | Accepted reasons name the route(s): "Fits (route DA), but leaves B 20:00–20:30 and C 20:30–21:00 unsellable." | Sales and ops see where the group goes; the route may still change until the day is locked |
+| 2026-11-09 | Splitting a large group across start times (and bookings with more than one start time) deferred to Phase 2; the "not possible" reason tells sales to book part of the group at another time, and T13 no longer fixes which upgrade is suggested first | Owner: rare case; it would touch bookings, the Day plan page, Outlook titles and the import parser. Sales can make two ordinary bookings meanwhile |

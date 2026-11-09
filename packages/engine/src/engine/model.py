@@ -14,11 +14,12 @@ SessionStatus = Literal["open", "locked", "in_progress", "done"]
 
 @dataclass(frozen=True)
 class Session:
-    """One group in one zone for one time slot (a zone holds one group at a time).
+    """One group moving through its zones (its route), starting at `start`.
 
-    A group over 25 has one session per zone it takes. `adults` and `children` are the people
-    in this session.
-    `zone_id` is None while the session is "floating" (not yet given a zone).
+    A group over 25 is split into sub-groups, one session each. `adults` and `children` are the
+    people in this session.
+    `route` is the zone letters in visiting order, e.g. 'ABDC'. It is None while the session is
+    "floating" (the app hasn't fixed an order yet).
     """
 
     id: str
@@ -27,7 +28,7 @@ class Session:
     ticket_type: TicketType
     adults: int = 0
     children: int = 0
-    zone_id: str | None = None
+    route: str | None = None
     pinned: bool = False
     status: SessionStatus = "open"
 
@@ -41,17 +42,20 @@ class Session:
 
     @property
     def is_fixed(self) -> bool:
-        """True if the engine must not move this session to another zone.
+        """True if the engine must not give this session another route.
 
         That is the case when ops pinned it, the day is locked, or it has started/finished.
-        A session without a zone can't be fixed: there is nothing to keep.
+        A session without a route can't be fixed: there is nothing to keep.
         """
-        return self.zone_id is not None and (self.pinned or self.status != "open")
+        return self.route is not None and (self.pinned or self.status != "open")
 
 
 @dataclass(frozen=True)
 class Blackout:
-    """A period on one date when nothing can be sold in any zone."""
+    """A period on one date when nothing can be sold in any zone.
+
+    Any 30-min zone slot it touches is blocked (a blackout from 12:15 blocks 12:00–12:30).
+    """
 
     start: int
     end: int

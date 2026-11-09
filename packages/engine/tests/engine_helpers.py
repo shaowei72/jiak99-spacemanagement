@@ -21,7 +21,7 @@ def session(
     ticket_type: TicketType,
     people: int,
     *,
-    zone: str | None = None,
+    route: str | None = None,
     pinned: bool = False,
     date: str = TODAY,
 ) -> Session:
@@ -31,9 +31,14 @@ def session(
         start=t(start),
         ticket_type=ticket_type,
         adults=people,
-        zone_id=zone,
+        route=route,
         pinned=pinned,
     )
+
+
+def pinned(start: str, ticket_type: TicketType, route: str, people: int = 10) -> Session:
+    """A session ops has pinned to `route`."""
+    return session(start, ticket_type, people, route=route, pinned=True)
 
 
 def schedule(*sessions: Session, date: str = TODAY) -> dict[str, DayState]:
