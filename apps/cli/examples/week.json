@@ -1,8 +1,8 @@
 {
-  "_about": "Scenario week for testing. Use with --today 2026-12-01 (a Tuesday). See scenarios.json.",
+  "_about": "Scenario week for testing (SPEC v0.4, zone routes). Use with --today 2026-12-01 (a Tuesday). See scenarios.json.",
 
   "2026-12-01": {
-    "_purpose": "Tue, quiet day: two lunch sessions with seats left. Joins, dead-gap warnings, small groups.",
+    "_purpose": "Tue, quiet day: two lunch groups with seats left. Spare seats, splits, small groups, closing time.",
     "sessions": [
       {"start": "12:00", "type": "CLASSIC", "adults": 6, "children": 2},
       {"start": "12:00", "type": "PREMIUM", "adults": 14}
@@ -10,18 +10,18 @@
   },
 
   "2026-12-02": {
-    "_purpose": "Wed, lunch peak: all 4 zones busy around 12:00, dinner session later. Sales must move people.",
+    "_purpose": "Wed, lunch peak: four Premium groups at 12:00 fill every zone slot 12:00-14:00 (one group has only 7 people). Dinner group later.",
     "sessions": [
-      {"start": "11:00", "type": "PREMIUM_CT", "adults": 25},
-      {"start": "11:00", "type": "PREMIUM_CT", "adults": 20},
-      {"start": "11:30", "type": "PREMIUM", "adults": 25},
-      {"start": "12:00", "type": "CLASSIC", "adults": 18},
+      {"start": "12:00", "type": "PREMIUM", "adults": 25},
+      {"start": "12:00", "type": "PREMIUM", "adults": 20},
+      {"start": "12:00", "type": "PREMIUM", "adults": 18},
+      {"start": "12:00", "type": "PREMIUM", "adults": 7},
       {"start": "18:00", "type": "PREMIUM", "adults": 22}
     ]
   },
 
   "2026-12-03": {
-    "_purpose": "Thu, fragmented: sessions scattered through the day. Some requests fit snugly, others leave unsellable gaps.",
+    "_purpose": "Thu, fragmented: groups scattered through the day. Requests fit around them.",
     "sessions": [
       {"start": "09:00", "type": "CLASSIC", "adults": 12},
       {"start": "10:30", "type": "PREMIUM", "adults": 20},
@@ -32,59 +32,54 @@
   },
 
   "2026-12-04": {
-    "_purpose": "Fri, ops has locked the plan: every session pinned to a zone. Free time exists but in the wrong places.",
+    "_purpose": "Fri, ops locked the plan: every route pinned. Zone A is taken 11:30-12:30; three Premium groups at 19:00 leave one slot per zone free.",
     "sessions": [
-      {"start": "09:00", "type": "PREMIUM", "adults": 20, "zone": "A", "pinned": true},
-      {"start": "12:00", "type": "PREMIUM_CT", "adults": 25, "zone": "A", "pinned": true},
-      {"start": "10:00", "type": "PREMIUM", "adults": 15, "zone": "B", "pinned": true},
-      {"start": "13:00", "type": "PREMIUM_CT", "adults": 18, "zone": "B", "pinned": true},
-      {"start": "09:00", "type": "PREMIUM_CT", "adults": 25, "zone": "C", "pinned": true},
-      {"start": "12:00", "type": "PREMIUM_CT", "adults": 25, "zone": "C", "pinned": true},
-      {"start": "15:00", "type": "PREMIUM_CT", "adults": 20, "zone": "C", "pinned": true},
-      {"start": "09:00", "type": "PREMIUM_CT", "adults": 25, "zone": "D", "pinned": true},
-      {"start": "12:00", "type": "PREMIUM_CT", "adults": 25, "zone": "D", "pinned": true},
-      {"start": "15:00", "type": "PREMIUM_CT", "adults": 24, "zone": "D", "pinned": true}
+      {"start": "09:00", "type": "PREMIUM", "adults": 20, "route": "ABCD", "pinned": true},
+      {"start": "10:00", "type": "PREMIUM", "adults": 15, "route": "BCDA", "pinned": true},
+      {"start": "12:00", "type": "PREMIUM_CT", "adults": 25, "route": "ABCD", "pinned": true},
+      {"start": "15:00", "type": "PREMIUM_CT", "adults": 18, "route": "DCBA", "pinned": true},
+      {"start": "19:00", "type": "PREMIUM", "adults": 12, "route": "ABCD", "pinned": true},
+      {"start": "19:00", "type": "PREMIUM", "adults": 10, "route": "BCDA", "pinned": true},
+      {"start": "19:00", "type": "PREMIUM", "adults": 9, "route": "CDAB", "pinned": true}
     ]
   },
 
   "2026-12-05": {
-    "_purpose": "Sat, sold out: every zone back to back from 09:00 to 21:00. Only joins into sessions with seats left.",
+    "_purpose": "Sat, sold out: four Premium groups every two hours fill every zone slot 09:00-21:00. Some groups are small: spare seats exist but are not sellable.",
     "sessions": [
-      {"start": "09:00", "type": "PREMIUM_CT", "adults": 25},
-      {"start": "12:00", "type": "PREMIUM_CT", "adults": 22},
-      {"start": "15:00", "type": "PREMIUM_CT", "adults": 25},
-      {"start": "18:00", "type": "PREMIUM_CT", "adults": 25},
-
       {"start": "09:00", "type": "PREMIUM", "adults": 25},
+      {"start": "09:00", "type": "PREMIUM", "adults": 25},
+      {"start": "09:00", "type": "PREMIUM", "adults": 20},
+      {"start": "09:00", "type": "PREMIUM", "adults": 12},
       {"start": "11:00", "type": "PREMIUM", "adults": 25},
-      {"start": "13:00", "type": "PREMIUM", "adults": 10, "children": 5},
+      {"start": "11:00", "type": "PREMIUM", "adults": 22},
+      {"start": "11:00", "type": "PREMIUM", "adults": 18},
+      {"start": "11:00", "type": "PREMIUM", "adults": 9},
+      {"start": "13:00", "type": "PREMIUM", "adults": 25},
+      {"start": "13:00", "type": "PREMIUM", "adults": 25},
+      {"start": "13:00", "type": "PREMIUM", "adults": 15},
+      {"start": "13:00", "type": "PREMIUM", "adults": 10},
       {"start": "15:00", "type": "PREMIUM", "adults": 25},
+      {"start": "15:00", "type": "PREMIUM", "adults": 20},
+      {"start": "15:00", "type": "PREMIUM", "adults": 16},
+      {"start": "15:00", "type": "PREMIUM", "adults": 6},
       {"start": "17:00", "type": "PREMIUM", "adults": 25},
+      {"start": "17:00", "type": "PREMIUM", "adults": 25},
+      {"start": "17:00", "type": "PREMIUM", "adults": 25},
+      {"start": "17:00", "type": "PREMIUM", "adults": 14},
       {"start": "19:00", "type": "PREMIUM", "adults": 25},
-
-      {"start": "09:00", "type": "CLASSIC", "adults": 25},
-      {"start": "10:30", "type": "CLASSIC", "adults": 25},
-      {"start": "12:00", "type": "CLASSIC", "adults": 25},
-      {"start": "13:30", "type": "CLASSIC", "adults": 25},
-      {"start": "15:00", "type": "CLASSIC", "adults": 20},
-      {"start": "16:30", "type": "CLASSIC", "adults": 25},
-      {"start": "18:00", "type": "CLASSIC", "adults": 25},
-      {"start": "19:30", "type": "CLASSIC", "adults": 25},
-
-      {"start": "09:00", "type": "PREMIUM", "adults": 25},
-      {"start": "11:00", "type": "PREMIUM_CT", "adults": 25},
-      {"start": "14:00", "type": "PREMIUM", "adults": 25},
-      {"start": "16:00", "type": "PREMIUM_CT", "adults": 25},
-      {"start": "19:00", "type": "PREMIUM", "adults": 25}
+      {"start": "19:00", "type": "PREMIUM", "adults": 21},
+      {"start": "19:00", "type": "PREMIUM", "adults": 17},
+      {"start": "19:00", "type": "PREMIUM", "adults": 8}
     ]
   },
 
   "2026-12-06": {
-    "_purpose": "Sun, big groups: a 60-person company already split over three 10:00 zones. Splits, exact fills, groups too big.",
+    "_purpose": "Sun, big groups: a 60-person company booked at 10:00 as three groups of 20, a Classic group at 14:00.",
     "sessions": [
-      {"start": "10:00", "type": "PREMIUM", "adults": 25},
-      {"start": "10:00", "type": "PREMIUM", "adults": 25},
-      {"start": "10:00", "type": "PREMIUM", "adults": 10},
+      {"start": "10:00", "type": "PREMIUM", "adults": 20},
+      {"start": "10:00", "type": "PREMIUM", "adults": 20},
+      {"start": "10:00", "type": "PREMIUM", "adults": 20},
       {"start": "14:00", "type": "CLASSIC", "adults": 20}
     ]
   },
@@ -98,7 +93,7 @@
   },
 
   "2026-12-08": {
-    "_purpose": "Tue, closed all day (staff training).",
+    "_purpose": "Tue, closed all day.",
     "closed": true
   }
 }

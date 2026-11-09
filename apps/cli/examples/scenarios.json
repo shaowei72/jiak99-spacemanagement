@@ -1,26 +1,26 @@
 {
-  "_about": "Enquiries to run against week.json, each with the answer we expect. Run: uv run scenarios",
+  "_about": "Enquiries to run against week.json, each with the answer we expect (SPEC v0.4, zone routes). Run: uv run scenarios",
   "days": "week.json",
   "today": "2026-12-01",
   "scenarios": [
-    {"id": "S01", "title": "Spare seats in a taken zone aren't sold: the group gets its own zone",
+    {"id": "S01", "title": "Spare seats in a taken zone slot aren't sold: the group gets its own route",
      "enquiry": {"date": "2026-12-01", "start": "12:00", "type": "PREMIUM", "adults": 11},
      "expect": {"verdict": "ACCEPT_GOOD", "placement": "new"}},
 
-    {"id": "S02", "title": "Group of 30 takes exactly the last two free zones at 12:00",
+    {"id": "S02", "title": "Group of 30 split evenly (15 + 15); with the two lunch groups, zone A is then full 12:00-14:00",
      "enquiry": {"date": "2026-12-01", "start": "12:00", "type": "PREMIUM", "adults": 30},
-     "expect": {"verdict": "ACCEPT_GOOD", "placement": "split", "reason_contains": "needs 2 zones (25 + 5)"}},
+     "expect": {"verdict": "ACCEPT_GOOD", "placement": "split", "reason_contains": "split into 2 groups (15 + 15)"}},
 
-    {"id": "S03", "title": "10:00 start leaves 09:00-10:00 unsellable; 10:30 same day is better",
+    {"id": "S03", "title": "Mid-morning start wastes nothing: the hour before it is still sellable (e.g. Classic)",
      "enquiry": {"date": "2026-12-01", "start": "10:00", "type": "PREMIUM", "adults": 10},
-     "expect": {"verdict": "ACCEPT_COSTLY", "reason_contains": "09:00–10:00", "first_alternative": "2026-12-01 10:30 PREMIUM"}},
+     "expect": {"verdict": "ACCEPT_GOOD", "first_alternative": "none"}},
 
     {"id": "S04", "title": "Small-group warning (warn below 6)",
      "settings": {"warn_below": 6},
      "enquiry": {"date": "2026-12-01", "start": "15:00", "type": "CLASSIC_CT", "adults": 4},
      "expect": {"verdict": "ACCEPT_COSTLY", "reason_contains": "only 4 people"}},
 
-    {"id": "S05", "title": "Ends after closing time",
+    {"id": "S05", "title": "Ends after closing time; no Classic offered (downgrade)",
      "enquiry": {"date": "2026-12-01", "start": "19:30", "type": "PREMIUM", "adults": 8},
      "expect": {"verdict": "NOT_POSSIBLE", "reason_contains": "21:00 close", "first_alternative": "2026-12-01 19:00 PREMIUM"}},
 
@@ -40,62 +40,62 @@
      "enquiry": {"date": "2026-11-30", "start": "10:30", "type": "PREMIUM", "adults": 10},
      "expect": {"verdict": "NOT_POSSIBLE", "reason_contains": "in the past"}},
 
-    {"id": "S10", "title": "Lunch peak: 7 people can't use the 7 spare seats in the 12:00 Classic zone",
-     "enquiry": {"date": "2026-12-02", "start": "12:00", "type": "CLASSIC", "adults": 7},
-     "expect": {"verdict": "NOT_POSSIBLE", "reason_contains": "All 4 zones are in use at 12:00"}},
+    {"id": "S10", "title": "Lunch peak: 7 people can't use the 18 spare seats of the 7-person group",
+     "enquiry": {"date": "2026-12-02", "start": "12:30", "type": "CLASSIC", "adults": 7},
+     "expect": {"verdict": "NOT_POSSIBLE", "reason_contains": "Zone A is in use 12:30–13:30"}},
 
-    {"id": "S11", "title": "Lunch peak: all zones busy, nearest other day offered",
+    {"id": "S11", "title": "Lunch peak: zone A full at 12:00; an hour earlier fits",
      "enquiry": {"date": "2026-12-02", "start": "12:00", "type": "CLASSIC", "adults": 10},
-     "expect": {"verdict": "NOT_POSSIBLE", "reason_contains": "All 4 zones are in use at 12:00", "first_alternative": "2026-12-03 12:00 CLASSIC"}},
+     "expect": {"verdict": "NOT_POSSIBLE", "reason_contains": "Zone A is in use 12:00–13:00", "first_alternative": "2026-12-02 11:00 CLASSIC"}},
 
-    {"id": "S12", "title": "Evening: a group of 3 gets a whole zone of its own, no better option",
+    {"id": "S12", "title": "Evening: a group of 3 gets a route of its own, no better option",
      "enquiry": {"date": "2026-12-02", "start": "17:30", "type": "PREMIUM", "adults": 3},
      "expect": {"verdict": "ACCEPT_GOOD", "placement": "new", "first_alternative": "none"}},
 
-    {"id": "S13", "title": "Fragmented day: request fits snugly between sessions",
-     "enquiry": {"date": "2026-12-03", "start": "12:30", "type": "CLASSIC", "adults": 8},
+    {"id": "S13", "title": "Fragmented day: request fits between groups",
+     "enquiry": {"date": "2026-12-03", "start": "12:00", "type": "CLASSIC", "adults": 8},
      "expect": {"verdict": "ACCEPT_GOOD", "placement": "new"}},
 
-    {"id": "S14", "title": "Turnaround 15: 09:00-10:30 too short for a ticket plus reset",
+    {"id": "S14", "title": "Turnaround 15: zone A's resets after the lunch groups leave no A slot for a 1 h Classic at 13:00; the 1.5 h Classic + CT reaches A at 14:00",
      "settings": {"turnaround": 15},
-     "enquiry": {"date": "2026-12-03", "start": "10:30", "type": "CLASSIC", "adults": 6},
-     "expect": {"verdict": "ACCEPT_COSTLY", "reason_contains": "09:00–10:30", "first_alternative": "2026-12-03 11:00 CLASSIC"}},
+     "enquiry": {"date": "2026-12-01", "start": "13:00", "type": "CLASSIC", "adults": 6},
+     "expect": {"verdict": "NOT_POSSIBLE", "reason_contains": "Zone A is in use 13:00–14:00", "first_alternative": "2026-12-01 13:00 CLASSIC_CT"}},
 
-    {"id": "S15", "title": "Locked plan: free time exists but only by moving pinned sessions",
-     "enquiry": {"date": "2026-12-04", "start": "11:00", "type": "PREMIUM", "adults": 4},
-     "expect": {"verdict": "NOT_POSSIBLE", "reason_contains": "without moving pinned or locked sessions"}},
+    {"id": "S15", "title": "Locked plan: zone A is pinned 11:30-12:30, so a Classic at 11:30 can't go",
+     "enquiry": {"date": "2026-12-04", "start": "11:30", "type": "CLASSIC", "adults": 4},
+     "expect": {"verdict": "NOT_POSSIBLE", "reason_contains": "Zone A is in use 11:30–12:30"}},
 
-    {"id": "S16", "title": "Locked plan: request fits into a zone freed at 16:00",
-     "enquiry": {"date": "2026-12-04", "start": "16:00", "type": "CLASSIC", "adults": 10},
-     "expect": {"verdict": "ACCEPT_GOOD", "placement": "new"}},
+    {"id": "S16", "title": "Locked plan: request fits around the pinned routes (A is free only at 11:00)",
+     "enquiry": {"date": "2026-12-04", "start": "11:00", "type": "PREMIUM", "adults": 10},
+     "expect": {"verdict": "ACCEPT_GOOD", "placement": "new", "reason_contains": "Fits (route A"}},
 
-    {"id": "S17", "title": "Sold out: 10 people can't use the 10 spare seats in the 13:00 Premium zone",
+    {"id": "S17", "title": "Sold out: 10 people can't use the 15 spare seats of the 10-person group at 13:00",
      "enquiry": {"date": "2026-12-05", "start": "13:00", "type": "PREMIUM", "adults": 8, "children": 2},
-     "expect": {"verdict": "NOT_POSSIBLE", "reason_contains": "All 4 zones are in use at 13:00"}},
+     "expect": {"verdict": "NOT_POSSIBLE", "reason_contains": "Zones A, B, C and D are in use 13:00–15:00"}},
 
     {"id": "S18", "title": "Sold out: Sunday offered instead",
      "enquiry": {"date": "2026-12-05", "start": "13:00", "type": "PREMIUM", "adults": 11},
-     "expect": {"verdict": "NOT_POSSIBLE", "reason_contains": "All 4 zones are in use", "first_alternative": "2026-12-06 13:00 PREMIUM"}},
+     "expect": {"verdict": "NOT_POSSIBLE", "first_alternative": "2026-12-06 13:00 PREMIUM"}},
 
     {"id": "S19", "title": "Sold out: Classic + CT gets the nearest day, not a switch to Classic",
      "enquiry": {"date": "2026-12-05", "start": "15:00", "type": "CLASSIC_CT", "adults": 5},
      "expect": {"verdict": "NOT_POSSIBLE", "first_alternative": "2026-12-06 15:00 CLASSIC_CT"}},
 
-    {"id": "S20", "title": "Big groups: 15 more at 10:00 take the last zone, leaving 09:00-10:00 unsellable",
+    {"id": "S20", "title": "Big groups: 15 more at 10:00 take the last free slot in every zone",
      "enquiry": {"date": "2026-12-06", "start": "10:00", "type": "PREMIUM", "adults": 15},
-     "expect": {"verdict": "ACCEPT_COSTLY", "placement": "new", "reason_contains": "09:00–10:00", "first_alternative": "2026-12-06 10:30 PREMIUM"}},
+     "expect": {"verdict": "ACCEPT_GOOD", "placement": "new"}},
 
-    {"id": "S21", "title": "Big groups: 26 people need 2 zones at 10:00, only 1 free",
+    {"id": "S21", "title": "Big groups: 26 people need 2 groups at 10:00, room for only 1",
      "enquiry": {"date": "2026-12-06", "start": "10:00", "type": "PREMIUM", "adults": 26},
-     "expect": {"verdict": "NOT_POSSIBLE", "reason_contains": "Only 1 zone free at 10:00; this group needs 2", "first_alternative": "2026-12-07 10:00 PREMIUM"}},
+     "expect": {"verdict": "NOT_POSSIBLE", "reason_contains": "zone A has room for only 1 group in 10:00–12:00", "first_alternative": "2026-12-07 10:00 PREMIUM"}},
 
-    {"id": "S22", "title": "Big groups: 75 people need 3 zones, only 1 free at 10:00",
+    {"id": "S22", "title": "Big groups: 75 Classic people need 3 groups, zone A holds only 2 per hour",
      "enquiry": {"date": "2026-12-06", "start": "09:00", "type": "CLASSIC", "adults": 75},
-     "expect": {"verdict": "NOT_POSSIBLE", "reason_contains": "Only 1 zone free at 10:00; this group needs 3"}},
+     "expect": {"verdict": "NOT_POSSIBLE", "reason_contains": "zone A has room for only 2 groups in 09:00–10:00"}},
 
-    {"id": "S23", "title": "Big groups: 40 at 13:00 leaves a gap; 13:30 is better (12:00-13:30 is sellable)",
+    {"id": "S23", "title": "Big groups: 40 at 13:00 split 20 + 20 around the 14:00 Classic group",
      "enquiry": {"date": "2026-12-06", "start": "13:00", "type": "PREMIUM", "adults": 40},
-     "expect": {"verdict": "ACCEPT_COSTLY", "placement": "split", "reason_contains": "12:00–13:00", "first_alternative": "2026-12-06 13:30 PREMIUM"}},
+     "expect": {"verdict": "ACCEPT_GOOD", "placement": "split", "reason_contains": "split into 2 groups (20 + 20)"}},
 
     {"id": "S24", "title": "Blackout: request runs into the private event",
      "enquiry": {"date": "2026-12-07", "start": "13:00", "type": "PREMIUM", "adults": 10},
@@ -109,16 +109,24 @@
      "enquiry": {"date": "2026-12-08", "start": "12:00", "type": "PREMIUM", "adults": 10},
      "expect": {"verdict": "NOT_POSSIBLE", "reason_contains": "closed", "first_alternative": "2026-12-09 12:00 PREMIUM"}},
 
-    {"id": "S27", "title": "Group of 60 needs 3 zones at 12:00, only 2 free",
+    {"id": "S27", "title": "Group of 60 needs 3 groups at 12:00; zone A has room for only 2",
      "enquiry": {"date": "2026-12-01", "start": "12:00", "type": "PREMIUM", "adults": 60},
-     "expect": {"verdict": "NOT_POSSIBLE", "reason_contains": "Only 2 zones free at 12:00; this group needs 3"}},
+     "expect": {"verdict": "NOT_POSSIBLE", "reason_contains": "zone A has room for only 2 groups in 12:00–14:00"}},
 
-    {"id": "S28", "title": "Upgrade offered: 19:00 Premium fills the evening that Classic leaves half-used",
-     "enquiry": {"date": "2026-12-01", "start": "19:00", "type": "CLASSIC", "adults": 8},
-     "expect": {"verdict": "ACCEPT_COSTLY", "reason_contains": "20:30–21:00", "options_include": ["2026-12-01 19:00 PREMIUM"]}},
+    {"id": "S28", "title": "Upgrade offered: a Classic strands B and C at the end of the day; Premium fills them",
+     "enquiry": {"date": "2026-12-04", "start": "19:00", "type": "CLASSIC", "adults": 8},
+     "expect": {"verdict": "ACCEPT_COSTLY", "reason_contains": "B 20:00–20:30 and C 20:30–21:00", "first_alternative": "2026-12-04 19:00 PREMIUM"}},
 
-    {"id": "S29", "title": "Never a downgrade: Premium would fit perfectly but drops the Chef's Table",
-     "enquiry": {"date": "2026-12-01", "start": "19:00", "type": "CLASSIC_CT", "adults": 8},
-     "expect": {"verdict": "ACCEPT_COSTLY", "first_alternative": "2026-12-01 19:30 CLASSIC_CT", "options_exclude": ["2026-12-01 19:00 PREMIUM"]}}
+    {"id": "S29", "title": "Never a downgrade: Premium would fill the evening but drops the Chef's Table",
+     "enquiry": {"date": "2026-12-04", "start": "19:00", "type": "CLASSIC_CT", "adults": 8},
+     "expect": {"verdict": "ACCEPT_COSTLY", "reason_contains": "C 20:30–21:00", "first_alternative": "2026-12-03 19:00 CLASSIC_CT", "options_exclude": ["2026-12-04 19:00 PREMIUM"]}},
+
+    {"id": "S30", "title": "Tingkat when B, C and D are full: other times offered, never another ticket in its place",
+     "enquiry": {"date": "2026-12-02", "start": "13:00", "type": "TINGKAT", "adults": 4},
+     "expect": {"verdict": "NOT_POSSIBLE", "reason_contains": "Zones B, C and D are in use at 13:00", "first_alternative": "2026-12-02 14:00 TINGKAT"}},
+
+    {"id": "S31", "title": "Locked plan: a Classic fits at 16:00 around the pinned afternoon route",
+     "enquiry": {"date": "2026-12-04", "start": "16:00", "type": "CLASSIC", "adults": 10},
+     "expect": {"verdict": "ACCEPT_GOOD", "placement": "new"}}
   ]
 }

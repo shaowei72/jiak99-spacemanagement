@@ -20,7 +20,7 @@ def test_scenario_week_loads_closed_days_and_blackouts() -> None:
     assert "_about" not in days
     assert days["2026-12-08"].closed
     assert len(days["2026-12-07"].blackouts) == 1
-    assert len(days["2026-12-05"].sessions) == 23
+    assert len(days["2026-12-05"].sessions) == 24
 
 
 def test_runner_reports_a_wrong_expectation(
