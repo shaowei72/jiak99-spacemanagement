@@ -28,9 +28,15 @@ def book(
 
 
 def test_every_page_links_to_every_other_page(client: TestClient) -> None:
-    page = client.get("/board").text
-    for link in ("/enquiry", "/board", "/calendar", "/ops", "/settings"):
-        assert f'href="{link}"' in page
+    page = client.get("/calendar").text
+    for link, name in (
+        ("/enquiry", "Check and book"),
+        ("/ops", "Day plan"),
+        ("/calendar", "Calendar"),
+        ("/settings", "Settings"),
+    ):
+        assert f'<a href="{link}">{name}</a>' in page
+    assert '<a href="/board">' not in page  # folded into Check and book; /board still works
 
 
 # --- availability board ----------------------------------------------------------------------

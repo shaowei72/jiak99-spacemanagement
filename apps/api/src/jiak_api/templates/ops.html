@@ -1,8 +1,8 @@
 {% extends "base.html" %}
-{% block title %}Operations {{ date }}{% endblock %}
+{% block title %}Day plan {{ date }}{% endblock %}
 {% block main_class %}wide{% endblock %}
 {% block content %}
-<h1>Operations</h1>
+<h1>Day plan</h1>
 
 <form class="pick" method="get" action="/ops">
   <label>Date <input type="date" name="date" value="{{ date }}" required></label>

@@ -80,3 +80,7 @@
 | 2026-11-09 | The timeline shows each group in the zone of the engine's current best plan; a dashed border means no zone is stored yet | Matches "allocated zones are a suggestion" (2026-11-08): what ops sees is where groups would go now |
 | 2026-11-09 | Availability board defaults to a group of 1; a free cell links to the Enquiry check with that slot filled in | Group of 1 = "is any zone free"; the check gives the verdict and the Book button |
 | 2026-11-09 | Prices are entered in dollars on the Settings page (stored as cents); a ticket needs both adult and child price, or neither | Fewer typos than cents; a half-entered price would silently count children as free |
+| 2026-11-09 | Pages renamed for the sales → ops flow: "Enquiry check" → "Check and book", "Operations" → "Day plan" (addresses `/enquiry`, `/ops` unchanged) | Owner's names; unchanged addresses keep shared links working |
+| 2026-11-09 | The availability board is no longer a menu page; Check and book lists every start time that fits the group on the asked date, per ticket, asked ticket first. `/board` still works | Real enquiries always name a date; one page answers both "does 10:00 fit?" and "what else fits that day?" |
+| 2026-11-09 | Check and book accepts an empty start time: then only the times that fit are shown, no verdict | Covers "what do you have on Saturday for 40?" in one step |
+| 2026-11-09 | The times list shows "fits" only, not good fit vs at a cost | That needs a full check per time (up to 88); add later if sales asks, after measuring speed |

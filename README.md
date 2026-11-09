@@ -20,8 +20,8 @@ renamed without touching data.
 ## Status
 
 Done: Milestone 1 (the engine, `packages/engine`, plus a command-line tool), Milestone 2 (API + database) and
-Milestone 3 (web pages: Enquiry check with Book, availability board, 6-month calendar, operations timeline,
-settings). Next: Milestone 4, Outlook sync.
+Milestone 3 (web pages: Check and book, Day plan, 6-month calendar, settings). In progress: a Bookings page
+(list, edit, cancel). Then Milestone 4, Outlook sync.
 
 ## Setup
 
@@ -73,14 +73,15 @@ uv run alembic upgrade head                      # create or update the tables (
 uv run uvicorn jiak_api.main:app --reload        # dev server; try the routes at http://127.0.0.1:8000/docs
 ```
 
-Web pages: http://127.0.0.1:8000/ opens the **Enquiry check**. A good or costly
+Web pages: http://127.0.0.1:8000/ opens **Check and book**. Under each answer it lists every start time that still
+fits the group that day, per ticket (leave Start empty to see only those times). A good or costly
 verdict and each alternative has a **Book** button: fill in the customer's name (phone, email, company and notes
 are optional) and press Book. If the slot filled up after the check (when pressing either Book button), the page
 says **No longer fits** and shows fresh alternatives; "Not possible" is only the answer to Check. Each booking has its own page, `/bookings/<id>`.
 
-The other pages (top menu): **Board** (`/board`, what a group size can still book), **Calendar** (`/calendar`, six
-months coloured by seat-hour use), **Operations** (`/ops`, zones × time with dead gaps; allocate, lock, pin,
-closed day and blocked times) and **Settings** (`/settings`).
+The other pages (top menu): **Day plan** (`/ops`, zones × time with dead gaps; allocate, lock, pin, closed day and
+blocked times), **Calendar** (`/calendar`, six months coloured by seat-hour use) and **Settings** (`/settings`). The
+full availability grid is still at `/board`, without a menu link.
 
 The same data as JSON, once the server runs (after `uv run seed`):
 

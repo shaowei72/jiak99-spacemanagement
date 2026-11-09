@@ -49,11 +49,10 @@ Open **http://127.0.0.1:8000** in the browser. Leave PowerShell open while you d
 
 | Page | Try |
 | --- | --- |
-| **Enquiry check** | 2026-12-01, 10:00, PHE, 10 adults → verdict, reason and alternatives. Press **Book**, enter a name |
-| **Board** | 2026-12-01, group size 30 → what can still be sold; click a **Free** cell to check it |
+| **Check and book** | 2026-12-01, 10:00, PHE, 30 adults → verdict, reason, alternatives and every time that fits. Click a time, press **Book**, enter a name. Leave Start empty to see only the times |
 | **Calendar** | Find December 2026 (**Later →** if it isn't shown); busier days are darker; click a day |
-| **Operations** | 2026-12-01: zones A–D over the day, dead gaps hatched. Press **Allocate**, pin a group, **Lock day** |
-| **Settings** | Turnaround 15 minutes → Save, then look at Operations again |
+| **Day plan** | 2026-12-01: zones A–D over the day, dead gaps hatched. Press **Allocate**, pin a group, **Lock day** |
+| **Settings** | Turnaround 15 minutes → Save, then look at the Day plan again |
 | **API** | http://127.0.0.1:8000/docs lists every route and lets you try it |
 
 The command line works too: `uv run check 2026-12-01 11:30 PREMIUM 10` and `uv run scenarios`.

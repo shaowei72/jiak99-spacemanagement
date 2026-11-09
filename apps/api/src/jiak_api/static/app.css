@@ -196,3 +196,16 @@ th, td { padding: 0.3rem 0.5rem; border: 1px solid var(--line); text-align: left
   .settings { grid-template-columns: 1fr 1fr; }
   .settings .wide { grid-column: 1 / -1; }
 }
+
+/* Times that fit, on Check and book: wrapping chips, so it works at ~350 px (Outlook pane) */
+.times { margin-top: 1.2rem; }
+.ticket-times { background: #fff; border: 1px solid var(--line); border-radius: 6px; padding: 0.4rem 0.7rem; margin: 0 0 0.5rem; }
+.ticket-times.asked { border-left: 5px solid var(--accent); }
+.ticket-name { font-weight: 700; margin: 0.1rem 0 0.3rem; }
+.chips { display: flex; flex-wrap: wrap; gap: 0.35rem; margin: 0; }
+.chip {
+  display: inline-block; padding: 0.2rem 0.55rem; border: 1px solid var(--accent); border-radius: 999px;
+  color: var(--accent); text-decoration: none; font-size: 0.9rem; font-variant-numeric: tabular-nums;
+}
+.chip:hover { background: #e7effa; }
+.chip.current { background: var(--accent); color: #fff; }
