@@ -3,9 +3,9 @@
 | Date | Decision | Reason |
 | --- | --- | --- |
 | 2026-11-06 | Engine database is the system of record; Outlook mirrors it | Outlook can't enforce capacity or prevent double-booking |
-| 2026-11-06 | Zones float until ops locks the day | Identical zones; maximises what sales can sell |
+| 2026-11-06 | ~~Zones float until ops locks the day~~ — superseded 2026-11-09 (zone routes) | Identical zones; maximises what sales can sell |
 | 2026-11-06 | No hold state | Business decision: enquiry is booked or not |
-| 2026-11-06 | Last intake 19:30; close 21:00 | Business decision |
+| 2026-11-06 | ~~Last intake 19:30; close 21:00~~ — superseded 2026-11-09 (zone routes) | Business decision |
 | 2026-11-06 | ~~Separate groups may share a session (same start + type, ≤ 25 total)~~ — superseded 2026-11-07, see below; no minimum group size still applies | Business decision |
 | 2026-11-07 | Python 3.13 + uv instead of TypeScript + pnpm | Owner is learning Python and must be able to read and review the code |
 | 2026-11-07 | Web UI server-rendered (FastAPI + Jinja2 + HTMX) instead of React SPA | Less JavaScript; Outlook task pane can load the pages directly |
@@ -20,21 +20,21 @@
 | 2026-11-07 | `today` (and optionally the current minute) are passed into the engine | Engine never reads the calendar; booking window and "past" checks stay testable |
 | 2026-11-07 | Engine `Session` carries adults/children totals, not individual bookings | Engine only needs headcount and revenue; the API sums confirmed bookings |
 | 2026-11-07 | Added `apps/cli` (`uv run check …`) for MVP 0 | Lets sales try real enquiries before any screens exist |
-| 2026-11-07 | 4 ticket types replace T90/T120/T180: CLASSIC 1.5 h, CLASSIC_CT 1.5 h, PREMIUM 2 h, PREMIUM_CT 3 h | Business decision (owner) |
+| 2026-11-07 | ~~4 ticket types replace T90/T120/T180: CLASSIC 1.5 h, CLASSIC_CT 1.5 h, PREMIUM 2 h, PREMIUM_CT 3 h~~ — superseded 2026-11-09 (zone routes) | Business decision (owner) |
 | 2026-11-07 | Ticket types use short stable codes; full names are display-only | Renaming a product mustn't break stored bookings or Outlook parsing; same-length types need distinct labels |
-| 2026-11-07 | Acceptance tests T1–T10 map T90→CLASSIC, T120→PREMIUM, T180→PREMIUM_CT | Keeps every test's original durations and expectations |
+| 2026-11-07 | ~~Acceptance tests T1–T10 map T90→CLASSIC, T120→PREMIUM, T180→PREMIUM_CT~~ — superseded 2026-11-09 (zone routes) | Keeps every test's original durations and expectations |
 | 2026-11-07 | Equal alternatives: type without Chef's Table first (TICKET_TYPES order) | CLASSIC and CLASSIC_CT have equal length, so length alone can't break the tie |
-| 2026-11-07 | Different ticket types never share a zone in the same time slot, even with equal length | Business decision (owner); closes the CLASSIC / CLASSIC_CT sharing question |
+| 2026-11-07 | ~~Different ticket types never share a zone in the same time slot, even with equal length~~ — superseded 2026-11-09 (zone routes) | Business decision (owner); closes the CLASSIC / CLASSIC_CT sharing question |
 | 2026-11-07 | Outlook subject tag is the ticket code, e.g. `[PREMIUM]`, `[Classic CT]` | Duration tags (`[1.5h]`) can't tell Classic from Classic + Chef's Table |
-| 2026-11-07 | **No sharing: a zone taken by a group is sold out for its time slot, whatever the group size.** Only unoccupied zones can be sold | Business decision (owner); replaces the 2026-11-06 sharing rule |
+| 2026-11-07 | ~~**No sharing: a zone taken by a group is sold out for its time slot, whatever the group size.** Only unoccupied zones can be sold~~ — superseded 2026-11-09 (zone routes) | Business decision (owner); replaces the 2026-11-06 sharing rule |
 | 2026-11-07 | Joining removed from the engine (join placement, "join nearby" alternatives, board "join" status) rather than kept behind a setting | Keeps the code simple to read; no dead options |
-| 2026-11-07 | Acceptance test T2 changed to expect a new zone; T11 added (four 1-person groups sell out a slot) | Follows the no-sharing rule |
+| 2026-11-07 | ~~Acceptance test T2 changed to expect a new zone; T11 added (four 1-person groups sell out a slot)~~ — superseded 2026-11-09 (zone routes) | Follows the no-sharing rule |
 | 2026-11-07 | Small-group warning stays off (`smallGroupWarnBelow` = 0) | Business decision (owner): leave off for now |
 | 2026-11-07 | Alternatives never suggest a downgrade: lower level or losing the Chef's Table (so Classic + CT ↔ Premium both count) | Business decision (owner); strict reading chosen for the one ambiguous pair |
-| 2026-11-07 | Acceptance test T5 no longer expects "19:30 Classic" as an alternative | It is a downgrade from Premium |
-| 2026-11-07 | All 4 zones may run concurrently with any mix of ticket types; no Chef's Table capacity limit | Business decision (owner) |
+| 2026-11-07 | ~~Acceptance test T5 no longer expects "19:30 Classic" as an alternative~~ — superseded 2026-11-09 (zone routes) | It is a downgrade from Premium |
+| 2026-11-07 | ~~All 4 zones may run concurrently with any mix of ticket types; no Chef's Table capacity limit~~ — superseded 2026-11-09 (zone routes) | Business decision (owner) |
 | 2026-11-07 | Sessions point to their booking (`sessions.booking_id`) instead of `Booking.sessionId` + `groupRef` | A booking over 25 has several sessions; one foreign key says that directly |
-| 2026-11-07 | Groups over 25 are split with adults filling zones first (30A 10C → 25A + 5A 10C) | Spec silent; any split is valid since everyone counts as 1 |
+| 2026-11-07 | ~~Groups over 25 are split with adults filling zones first (30A 10C → 25A + 5A 10C)~~ — superseded 2026-11-09 (zone routes) | Spec silent; any split is valid since everyone counts as 1 |
 | 2026-11-07 | Dev sign-in stand-in: `X-User` / `X-Role` headers until Entra ID sign-in is added | Lets Milestones 2–3 be built and tested without a tenant; routes won't change |
 | 2026-11-07 | Booking lock: PostgreSQL `pg_advisory_xact_lock(YYYYMMDD)`; SQLite uses an in-process lock | SQLite is for single-process local dev only; the PostgreSQL lock works across processes |
 | 2026-11-07 | Every booking creates a new customer row (no matching of repeat customers yet) | Keeps M2 simple; matching can be added when the Outlook import shows real data |
@@ -56,7 +56,7 @@
 | 2026-11-08 | Lock first allocates, then freezes every session; sessions booked after the lock are frozen at the next allocate | Every session of a locked day ends up with a fixed zone |
 | 2026-11-08 | Pinning re-plans and stores zones for the other movable sessions; refused (409) if no valid plan is left | Stored zones never show two groups in one zone at the same time |
 | 2026-11-08 | `PATCH /sessions/:id/pin` body: `{"zone": "B"}`, `{}` (current zone) or `{"pinned": false}`; plan actions return the day view | One route for pin/unpin as SPEC lists; the page needs the whole day as other groups may move |
-| 2026-11-08 | Zone-calendar write on lock deferred to Milestone 4 | Needs the Graph gateway (`packages/graph`), built in Milestone 4 |
+| 2026-11-08 | ~~Zone-calendar write on lock deferred to Milestone 4~~ — superseded 2026-11-09 (zone routes) | Needs the Graph gateway (`packages/graph`), built in Milestone 4 |
 | 2026-11-08 | `PUT /settings` is refused (409) if any booked day from today on would have no valid zone plan; past days are ignored | A settings change must never strand confirmed bookings |
 | 2026-11-08 | `PUT /settings` doesn't take every date lock; a booking racing a settings change could slip through | Settings change rarely and only by ops; locking ~180 dates per change isn't worth it yet |
 | 2026-11-08 | Settings limits: turnaround 0–120 min, small-group warning 0–25, alternative days 0–30, Outlook horizon 1–183 days | Catches typos; wide enough for any real choice |
@@ -87,3 +87,18 @@
 | 2026-11-09 | New **Bookings** page (not in SPEC): list from today on, filter by dates, customer/company name and status; each booking can be edited, cancelled (after "Are you sure?") or marked no-show | Customers call back to change or cancel; the API could already do it, but sales had no page for it |
 | 2026-11-09 | Editing re-checks a new slot or headcount like a new booking; if it doesn't fit, nothing changes and the page shows the reason and alternatives ("Use this" fills the form) | Same rules and date lock as booking (`bookings.edit_booking`); a failed edit must never lose the booking |
 | 2026-11-09 | The Bookings list shows confirmed bookings by default, at most 500 rows | Cancelled ones are noise for daily work but can be shown; 500 is more than a busy month |
+| 2026-11-09 | **Zone routes (SPEC v0.4).** Zones have their own activity (A Tour/Exhibit, B Dining, C Chef's Table / Dining, D Sandart); each group visits its ticket's zones back-to-back in 30-min steps, in any order the app picks | Business feedback (owner): visitors move across zones during their stay |
+| 2026-11-09 | Ticket zones: CLASSIC A + one of B, C, D (1 h); CLASSIC_CT A + D + one of B, C (1.5 h); PREMIUM A+B+C+D (2 h); PREMIUM_CT A 30 + B 60 + C 60 + D 30 (3 h); 60-min visits are one continuous hour. The app picks the zone set as well as the order | Business decision (owner); B and C options for Classic added the same day |
+| 2026-11-09 | New ticket `TINGKAT` "Tingkat Meals" (short "Tingkat"): 30 min in one of B, C or D; latest start 20:30 | Business decision (owner) |
+| 2026-11-09 | Start times 09:00–20:30 on the 30-min grid; close stays 21:00 | Follows from the 30-min Tingkat and 1 h Classic |
+| 2026-11-09 | No sharing now per zone slot: one group per zone per 30-min slot, whatever its size | Business decision (owner); same idea as 2026-11-07, applied to routes |
+| 2026-11-09 | Groups over 25 split into `ceil(N / 25)` sub-groups as equal as possible (40 → 20 + 20), adults filling sub-groups first; each sub-group has its own route | Business decision (owner) |
+| 2026-11-09 | Dead (unsellable) time is counted per 30-min zone slot: dead if no non-Tingkat ticket could still use it | Business decision (owner): Tingkat fits almost anywhere and would hide waste |
+| 2026-11-09 | Tingkat is never suggested as a change of type; a Tingkat request may be offered upgrades, and Tingkat at another time or day | Owner: Tingkat is not a recommendation; time/day shifts keep the request's own ticket (widest sales options) |
+| 2026-11-09 | Turnaround setting kept (default 0); any value above 0 blocks the zone to the next 30-min boundary | Owner: leave it for now; visits are on the 30-min grid |
+| 2026-11-09 | Allocate / pin / lock now apply to each session's route (zone order) instead of a single zone | Owner confirmed; same ops workflow |
+| 2026-11-09 | Outlook: no per-zone room calendars; the booking event subject shows short name, customer, people, route(s) and times, e.g. `PHE+CT · Tan family · 18 pax · ABDC · 11:00–14:00`; split groups list routes as `ABCD/DCBA` | Owner; fewer mailboxes for the admin to set up |
+| 2026-11-09 | The route in the Outlook subject is the current plan and is updated when it changes before the day is locked | Owner |
+| 2026-11-09 | Sales' manual Outlook format stays `[TICKET] HH:MM · nA mC · Name` (now also `[TINGKAT]`); the app rewrites it to the new subject | Owner |
+| 2026-11-09 | Acceptance tests T1–T17 rewritten for the v0.4 rules (hand-worked expectations) | Old tests assumed identical zones and one zone per group |
+| 2026-11-09 | New Milestone 3R reworks engine, database, examples, CLI and pages for zone routes before Outlook sync (M4); example days only, no real data yet | Owner: sort out the changes before real data goes in |
