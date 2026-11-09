@@ -83,15 +83,15 @@ def test_calendar_shows_six_months_from_this_month(client: TestClient) -> None:
 
 
 def test_calendar_colours_a_busy_day_and_shows_locks(client: TestClient) -> None:
-    for name in ("A", "B", "C", "D"):
-        book(client, "09:00", "PREMIUM_CT", 25, f"Morning {name}")
-        book(client, "12:00", "PREMIUM_CT", 25, f"Midday {name}")
+    for start in ("09:00", "11:00", "13:00"):
+        for name in ("A", "B", "C", "D"):
+            book(client, start, "PREMIUM", 25, f"{start} {name}")
     assert client.post(f"/api/days/{DAY}/lock").status_code == 200
     page = client.get("/calendar?start=2026-12").text
     assert "December 2026" in page
     assert "November 2026" not in page
-    assert 'class="use3"' in page  # 50% seat-hour use: 4 zones x 6 h full, of 12 h
-    assert "8 bookings, 200 people" in page
+    assert 'class="use3"' in page  # 50% seat-hour use: every zone full 09:00-15:00, of 12 h
+    assert "12 bookings, 300 people" in page
     assert "🔒" in page
     assert 'href="/ops?date=2026-12-01"' in page
 
@@ -103,31 +103,36 @@ def test_calendar_ignores_a_bad_start(client: TestClient) -> None:
 # --- operations timeline ---------------------------------------------------------------------
 
 
-def test_ops_page_draws_groups_and_dead_gaps(client: TestClient) -> None:
+def test_ops_page_draws_each_visit_of_a_route(client: TestClient) -> None:
     book(client, "09:00", "PREMIUM", 18, "Tan family")
     book(client, "12:00", "CLASSIC", 10, "Lim office")
     page = client.get(f"/ops?date={DAY}")
     assert page.status_code == 200
-    assert "Tan family" in page.text
-    assert "PHE 18/25" in page.text
+    # Group 1 is drawn once in every zone it visits, labelled with its number.
+    for zone in "ABCD":
+        assert f"1: PHE · Tan family · 18 people · zone {zone} " in page.text
+    assert page.text.count("2: CHE · Lim office · 10 people · zone ") == 2
     assert "(suggested)" in page.text  # not allocated yet
     assert "floating" in page.text
     assert "Seat-hour use" in page.text
 
 
-def test_ops_page_shades_dead_gaps(client: TestClient) -> None:
-    # One zone runs 09:00-11:00, three 09:00-12:00, and all four are busy from 12:00:
-    # the first zone's 11:00-12:00 gap is too short for any ticket.
-    book(client, "09:00", "PREMIUM", 10, "First")
-    for name in ("B", "C", "D"):
-        book(client, "09:00", "PREMIUM_CT", 25, f"Long {name}")
-    for name in ("A", "B", "C", "D"):
-        book(client, "12:00", "CLASSIC", 25, f"Afternoon {name}")
+def test_ops_page_shades_unsellable_slots(client: TestClient) -> None:
+    # SPEC T6: three pinned Premium groups at 19:00 and a Classic leave B 20:00-20:30 and
+    # C 20:30-21:00 free, but no ticket except Tingkat can use them.
+    for route in ("ABCD", "BCDA", "CDAB"):
+        session_id = book(client, "19:00", "PREMIUM", 10, f"Evening {route}")["sessions"][0]["id"]
+        assert (
+            client.patch(f"/api/sessions/{session_id}/pin", json={"route": route}).status_code
+            == 200
+        )
+    book(client, "19:00", "CLASSIC", 5, "Late Classic")
     page = client.get(f"/ops?date={DAY}").text
-    assert "Dead gap 11:00–12:00" in page
+    assert "Unsellable 20:00–20:30" in page
+    assert "Unsellable 20:30–21:00" in page
 
 
-def test_allocate_stores_zones_and_comes_back(client: TestClient) -> None:
+def test_allocate_stores_routes_and_comes_back(client: TestClient) -> None:
     book(client, "09:00", "PREMIUM", 18, "Tan family")
     response = client.post(f"/ops/{DAY}/allocate", follow_redirects=False)
     assert response.status_code == 303
@@ -155,11 +160,11 @@ def test_pin_and_unpin(client: TestClient) -> None:
     booking = book(client, "09:00", "PREMIUM", 18, "Tan family")
     session_id = booking["sessions"][0]["id"]
     response = client.post(
-        f"/ops/sessions/{session_id}/pin", data={"zone": "C"}, follow_redirects=False
+        f"/ops/sessions/{session_id}/pin", data={"route": "dcba "}, follow_redirects=False
     )
     assert response.status_code == 303
     day = client.get(f"/api/days/{DAY}").json()
-    assert day["bookings"][0]["sessions"][0]["zoneId"] == "C"
+    assert day["bookings"][0]["sessions"][0]["route"] == "DCBA"
     assert day["bookings"][0]["sessions"][0]["pinned"] is True
     assert "Unpin" in client.get(f"/ops?date={DAY}").text
 
@@ -168,20 +173,27 @@ def test_pin_and_unpin(client: TestClient) -> None:
     assert day["bookings"][0]["sessions"][0]["pinned"] is False
 
 
-def test_pin_into_a_taken_zone_is_refused(client: TestClient) -> None:
+def test_pin_into_a_clash_is_refused(client: TestClient) -> None:
     first = book(client, "09:00", "PREMIUM", 18, "First")
     second = book(client, "09:00", "PREMIUM", 10, "Second")
-    client.post(f"/ops/sessions/{first['sessions'][0]['id']}/pin", data={"zone": "A"})
-    response = client.post(f"/ops/sessions/{second['sessions'][0]['id']}/pin", data={"zone": "A"})
+    client.post(f"/ops/sessions/{first['sessions'][0]['id']}/pin", data={"route": "ABCD"})
+    response = client.post(
+        f"/ops/sessions/{second['sessions'][0]['id']}/pin", data={"route": "ABCD"}
+    )
     assert response.status_code == 409
-    assert "Zone A is taken" in response.text
+    assert "Route ABCD clashes with a pinned or locked group." in response.text
 
 
 def test_pin_mistakes(client: TestClient) -> None:
-    assert client.post("/ops/sessions/nope/pin", data={"zone": "A"}).status_code == 404
+    assert client.post("/ops/sessions/nope/pin", data={"route": "ABCD"}).status_code == 404
     booking = book(client, "09:00", "PREMIUM", 18, "Tan family")
-    response = client.post(f"/ops/sessions/{booking['sessions'][0]['id']}/pin", data={"zone": "E"})
+    url = f"/ops/sessions/{booking['sessions'][0]['id']}/pin"
+    response = client.post(url, data={"route": "ABCE"})
     assert response.status_code == 422
+    assert "zone letters in visiting order" in response.text
+    response = client.post(url, data={"route": "AB"})  # a Classic route
+    assert response.status_code == 409
+    assert "not a route a PHE group can take" in response.text
 
 
 def test_actions_on_a_bad_date(client: TestClient) -> None:
@@ -274,7 +286,7 @@ def test_settings_that_strand_bookings_are_refused(client: TestClient) -> None:
         book(client, "11:00", "PREMIUM", 25, f"Late {name}")
     response = client.post("/settings", data=settings_form(turnaroundMinutes="30"))
     assert response.status_code == 409
-    assert "leave no valid zone plan" in response.text
+    assert "leave no valid plan" in response.text
 
 
 def test_sales_cannot_change_settings(client: TestClient) -> None:

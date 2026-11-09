@@ -9,7 +9,7 @@
   <p>{{ people(booking.adults, booking.children) }}</p>
 </div>
 {% if booking.status == "confirmed" %}
-<p>Its zones become free and can be sold again. This can't be undone; to restore it, book again.</p>
+<p>Its zone slots become free and can be sold again. This can't be undone; to restore it, book again.</p>
 <form method="post" action="/bookings/{{ booking.id }}/cancel" class="buttons">
   <button type="submit" class="danger-button">Yes, cancel this booking</button>
   <a href="/bookings/{{ booking.id }}">No, keep it</a>

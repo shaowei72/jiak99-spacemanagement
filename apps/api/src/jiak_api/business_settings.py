@@ -1,7 +1,7 @@
 """Saving the business settings (SPEC §2) and per-date overrides (closed days, blackouts).
 
-A change is refused if it would leave existing bookings without a valid zone plan, e.g. a longer
-turnaround when sessions run back to back in every zone, or closing a day that has bookings.
+A change is refused if it would leave existing bookings without a valid plan, e.g. a longer
+turnaround when groups follow each other closely through a zone, or closing a day that has bookings.
 """
 
 from typing import Any
@@ -30,7 +30,7 @@ def save_settings(db: Session, new: Settings, *, actor: str, now: Now) -> None:
             broken.append(date)
     if broken:
         raise SettingsConflict(
-            "These settings leave no valid zone plan for the bookings on "
+            "These settings leave no valid plan for the bookings on "
             f"{', '.join(broken)}. Move or cancel bookings there first."
         )
 
@@ -108,7 +108,7 @@ def save_day_settings(
 
 
 def fits(day: DayState, settings: Settings) -> bool:
-    """True if the day's sessions all get a zone (fixed ones where they are)."""
+    """True if the day's groups all get a route (fixed ones keep theirs)."""
     return assign(day.sessions, settings, blackouts=day.blackouts, optimise=False).ok
 
 

@@ -95,7 +95,7 @@ def to_engine_session(row: models.Session) -> EngineSession:
         ticket_type=cast(TicketType, row.ticket_type),
         adults=row.adults,
         children=row.children,
-        zone_id=row.zone_id,
+        route=row.route,
         pinned=row.pinned,
         status=cast(SessionStatus, row.status),
     )

@@ -12,7 +12,7 @@ from typing import cast
 from sqlalchemy.orm import Session
 
 from engine import Enquiry, EnquiryResult, check_enquiry
-from engine.evaluate import zone_sizes
+from engine.evaluate import group_sizes
 from engine.rules import TicketType
 from engine.text import format_time
 from jiak_api import audit, models
@@ -139,7 +139,7 @@ def edit_booking(
 ) -> models.Booking:
     """Change a confirmed booking.
 
-    A new date, time, ticket type or headcount is re-checked, ignoring the booking's own zones.
+    A new date, time, ticket type or headcount is re-checked, ignoring the booking's own sessions.
     If it doesn't fit: NoLongerFits, and nothing changes. Notes and customer details can always
     be changed, even after the visit.
     """
@@ -194,7 +194,7 @@ def edit_booking(
 def cancel_booking(
     database: Database, db: Session, booking_id: str, *, actor: str
 ) -> models.Booking:
-    """Cancel a booking and free its zones (its sessions are deleted)."""
+    """Cancel a booking and free its zone slots (its sessions are deleted)."""
     booking = find_booking(db, booking_id)
     with database.date_lock(db, booking.date):
         refresh_under_lock(db, booking, locked_dates=[booking.date])
@@ -217,7 +217,7 @@ def cancel_booking(
 def mark_no_show(
     database: Database, db: Session, booking_id: str, *, actor: str, now: Now
 ) -> models.Booking:
-    """The group didn't come. Frees its zones (sessions deleted); the booking stays visible.
+    """The group didn't come. Frees its zone slots (sessions deleted); the booking stays visible.
 
     Only allowed once the visit has started. Before that, cancel instead.
     """
@@ -279,8 +279,8 @@ def enquiry_of(booking: models.Booking) -> Enquiry:
 def move_booking(booking: models.Booking, wanted: Enquiry) -> None:
     """Give the booking its new slot and headcount, and update its sessions to match.
 
-    Same date, time and ticket type, and still the same number of zones: the sessions keep
-    their ids and zones; only the headcount changes. Anything else: new floating sessions.
+    Same date, time and ticket type, and still the same number of sub-groups: the sessions keep
+    their ids and routes; only the headcount changes. Anything else: new floating sessions.
     """
     parts = split_group(wanted.adults, wanted.children)
     same_slot = (
@@ -304,7 +304,7 @@ def move_booking(booking: models.Booking, wanted: Enquiry) -> None:
 
 
 def new_sessions(enquiry: Enquiry) -> list[models.Session]:
-    """One floating session per zone the group takes. Ops gives them zones later."""
+    """One floating session per sub-group. The engine gives them routes when the day is planned."""
     sessions: list[models.Session] = []
     for adults, children in split_group(enquiry.adults, enquiry.children):
         sessions.append(
@@ -314,7 +314,7 @@ def new_sessions(enquiry: Enquiry) -> list[models.Session]:
                 ticket_type=enquiry.ticket_type,
                 adults=adults,
                 children=children,
-                zone_id=None,
+                route=None,
             )
         )
     return sessions
@@ -328,13 +328,13 @@ def has_started(booking: models.Booking, now: Now) -> bool:
 
 
 def split_group(adults: int, children: int) -> list[tuple[int, int]]:
-    """(adults, children) per zone for one group. Adults fill zones first.
+    """(adults, children) per sub-group, sizes as even as possible. Adults fill sub-groups first.
 
-    30 adults + 10 children -> [(25, 0), (5, 10)].
+    30 adults + 10 children -> [(20, 0), (10, 10)].
     """
     parts: list[tuple[int, int]] = []
     adults_left = adults
-    for size in zone_sizes(adults + children):
+    for size in group_sizes(adults + children):
         adults_here = min(size, adults_left)
         parts.append((adults_here, size - adults_here))
         adults_left -= adults_here

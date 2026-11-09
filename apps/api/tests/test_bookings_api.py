@@ -5,6 +5,7 @@ from typing import Any
 from fastapi.testclient import TestClient
 from sqlalchemy import func, select
 
+from engine.rules import ROUTES
 from jiak_api import models
 from jiak_api.bookings import split_group
 from jiak_api.db import Database
@@ -32,16 +33,21 @@ def count(database: Database, table: type[models.Base]) -> int:
 # --- enquiry check ---------------------------------------------------------------------------
 
 
-def test_check_matches_engine_t1(client: TestClient, database: Database) -> None:
-    response = client.get("/api/enquiries/check", params=enquiry())
+def test_check_matches_the_engine(client: TestClient, database: Database) -> None:
+    response = client.get("/api/enquiries/check", params=enquiry("09:00", "CLASSIC", 10))
     assert response.status_code == 200
     assert response.headers["Cache-Control"] == "no-store"
     body = response.json()
-    assert body["verdict"] == "ACCEPT_COSTLY"
-    assert body["deadMinutesDelta"] == 60
-    assert body["placement"] == {"kind": "new", "people": 10, "newSessions": None}
-    first = body["alternatives"][0]
-    assert (first["start"], first["type"], first["verdict"]) == ("10:30", "PREMIUM", "ACCEPT_GOOD")
+    assert body["verdict"] == "ACCEPT_GOOD"  # SPEC T1
+    assert body["deadMinutesDelta"] == 0
+    placement = body["placement"]
+    assert (placement["kind"], placement["people"], placement["newSessions"]) == ("new", 10, None)
+    assert placement["route"] in ROUTES["CLASSIC"]
+
+    late = client.get("/api/enquiries/check", params=enquiry("20:30", "CLASSIC", 8)).json()
+    assert late["verdict"] == "NOT_POSSIBLE"  # SPEC T5
+    first = late["alternatives"][0]
+    assert (first["start"], first["type"], first["verdict"]) == ("20:00", "CLASSIC", "ACCEPT_GOOD")
     # Checking stores nothing (no hold state).
     assert count(database, models.Booking) == 0
 
@@ -82,7 +88,7 @@ def test_booking_creates_floating_session_and_audit_entry(
     assert body["customer"]["name"] == "Tan family"
     assert len(body["sessions"]) == 1
     session = body["sessions"][0]
-    assert (session["adults"], session["children"], session["zoneId"]) == (10, 2, None)
+    assert (session["adults"], session["children"], session["route"]) == (10, 2, None)
 
     with database.make_session() as db:
         entry = db.scalars(select(models.AuditLog)).one()
@@ -93,13 +99,13 @@ def test_booking_creates_floating_session_and_audit_entry(
         )
 
 
-def test_group_over_25_gets_one_session_per_zone(client: TestClient) -> None:
+def test_group_over_25_is_split_evenly(client: TestClient) -> None:
     body = client.post("/api/bookings", json=booking(adults=30, children=10)).json()
     sizes = [(s["adults"], s["children"]) for s in body["sessions"]]
-    assert sorted(sizes) == [(5, 10), (25, 0)]
+    assert sorted(sizes) == [(10, 10), (20, 0)]
 
 
-def test_fifth_group_in_a_slot_gets_409_with_alternatives(
+def test_fifth_group_at_a_time_gets_409_with_alternatives(
     client: TestClient, database: Database
 ) -> None:
     for _ in range(4):
@@ -108,13 +114,13 @@ def test_fifth_group_in_a_slot_gets_409_with_alternatives(
     response = client.post("/api/bookings", json=booking(adults=1))
     assert response.status_code == 409
     body = response.json()
-    assert body["detail"] == "All 4 zones are in use at 10:00."
+    assert body["detail"] == "Zones A, B, C and D are in use 10:00–12:00."
     assert body["check"]["verdict"] == "NOT_POSSIBLE"
     assert body["check"]["alternatives"]  # sales gets something else to offer
     assert count(database, models.Booking) == 4
 
 
-def test_cancel_frees_the_zone(client: TestClient, database: Database) -> None:
+def test_cancel_frees_the_zone_slots(client: TestClient, database: Database) -> None:
     ids = [client.post("/api/bookings", json=booking()).json()["id"] for _ in range(4)]
     assert client.post("/api/bookings", json=booking()).status_code == 409
 
@@ -156,7 +162,7 @@ def test_day_view_shows_bookings_plan_and_metrics(client: TestClient) -> None:
     body = client.get(f"/api/days/{DATE}").json()
     assert [b["start"] for b in body["bookings"]] == ["09:00"]  # cancelled ones are hidden
     session_id = body["bookings"][0]["sessions"][0]["id"]
-    assert body["assignment"][session_id] in {"A", "B", "C", "D"}
+    assert body["assignment"][session_id] in ROUTES["PREMIUM"]
     assert body["deadMinutes"] == 0
     assert body["metrics"]["averageFill"] == 1.0
     assert body["locked"] is False
@@ -171,7 +177,7 @@ def test_empty_day(client: TestClient) -> None:
 # --- helpers ---------------------------------------------------------------------------------
 
 
-def test_split_group_fills_zones_with_adults_first() -> None:
+def test_split_group_is_even_with_adults_first() -> None:
     assert split_group(10, 2) == [(10, 2)]
-    assert split_group(30, 10) == [(25, 0), (5, 10)]
-    assert split_group(0, 26) == [(0, 25), (0, 1)]
+    assert split_group(30, 10) == [(20, 0), (10, 10)]
+    assert split_group(0, 26) == [(0, 13), (0, 13)]

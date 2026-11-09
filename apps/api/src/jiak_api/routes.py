@@ -182,7 +182,7 @@ def edit_booking(
 def cancel_booking(
     booking_id: str, database: DatabaseDep, db: DbDep, user: SalesUser
 ) -> BookingOut:
-    """Cancel a booking; its zones become free again."""
+    """Cancel a booking; its zone slots become free again."""
     try:
         booking = bookings.cancel_booking(database, db, booking_id, actor=user.name)
     except bookings.BookingNotFound:
@@ -196,7 +196,7 @@ def cancel_booking(
 def mark_no_show(
     booking_id: str, database: DatabaseDep, db: DbDep, now: NowDep, user: OperationsUser
 ) -> BookingOut:
-    """The group didn't come (only after the start time). Its zones become free again."""
+    """The group didn't come (only after the start time). Its zone slots become free again."""
     try:
         booking = bookings.mark_no_show(database, db, booking_id, actor=user.name, now=now)
     except bookings.BookingNotFound:
@@ -329,15 +329,15 @@ def put_day_settings(
 
 @router.get("/days/{date}")
 def get_day(date: DateText, db: DbDep, _user: AnyUser) -> DayOut:
-    """Everything about one date: bookings, sessions, the best zone plan, and metrics."""
+    """Everything about one date: bookings, sessions, the best plan (routes), and metrics."""
     return day_view(db, real_date(date, "date"))
 
 
 @router.post("/days/{date}/allocate")
 def allocate_day(date: DateText, database: DatabaseDep, db: DbDep, user: OperationsUser) -> DayOut:
-    """Give every movable session its zone from the best plan. Pinned and locked ones stay put.
+    """Give every movable session its route from the best plan. Pinned and locked ones stay put.
 
-    Unpinned zones are still a suggestion: they may change when later bookings need it.
+    Unpinned routes are still a suggestion: they may change when later bookings need it.
     """
     date = real_date(date, "date")
     try:
@@ -349,9 +349,9 @@ def allocate_day(date: DateText, database: DatabaseDep, db: DbDep, user: Operati
 
 @router.post("/days/{date}/lock")
 def lock_day(date: DateText, database: DatabaseDep, db: DbDep, user: OperationsUser) -> DayOut:
-    """Allocate, then freeze every zone of the day.
+    """Allocate, then freeze every route of the day.
 
-    Bookings made later start without a zone; the next allocate gives them one and freezes it.
+    Bookings made later start without a route; the next allocate gives them one and freezes it.
     """
     date = real_date(date, "date")
     try:
@@ -363,7 +363,7 @@ def lock_day(date: DateText, database: DatabaseDep, db: DbDep, user: OperationsU
 
 @router.post("/days/{date}/unlock")
 def unlock_day(date: DateText, database: DatabaseDep, db: DbDep, user: OperationsUser) -> DayOut:
-    """Unfreeze the day. Zones and pins are kept; unpinned sessions may move again."""
+    """Unfreeze the day. Routes and pins are kept; unpinned routes may change again."""
     date = real_date(date, "date")
     try:
         plan.unlock_day(database, db, date, actor=user.name)
@@ -376,13 +376,13 @@ def unlock_day(date: DateText, database: DatabaseDep, db: DbDep, user: Operation
 def pin_session(
     session_id: str, body: PinIn, database: DatabaseDep, db: DbDep, user: OperationsUser
 ) -> DayOut:
-    """Pin a group to a zone, or unpin it. Returns the whole day, as other groups may move.
+    """Pin a group to a route, or unpin it. Returns the whole day, as other groups may move.
 
-    {"zone": "B"} pins to B · {} pins to the current zone · {"pinned": false} unpins.
+    {"route": "ABDC"} pins to that route · {} pins to the current route · {"pinned": false} unpins.
     """
     try:
         date = plan.pin_session(
-            database, db, session_id, pinned=body.pinned, zone=body.zone, actor=user.name
+            database, db, session_id, pinned=body.pinned, route=body.route, actor=user.name
         )
     except plan.SessionNotFound:
         raise HTTPException(status_code=404, detail="Session not found.") from None
@@ -403,7 +403,7 @@ def day_view(db: Session, date: str) -> DayOut:
         .where(models.Booking.date == date, models.Booking.status != "cancelled")
         .options(selectinload(models.Booking.sessions), selectinload(models.Booking.customer))
         .order_by(models.Booking.start, models.Booking.created_at)
-        .execution_options(populate_existing=True)  # show the zones just stored
+        .execution_options(populate_existing=True)  # show the routes just stored
     )
     return DayOut(
         date=date,
@@ -413,7 +413,7 @@ def day_view(db: Session, date: str) -> DayOut:
             BlackoutOut(start=format_time(b.start), end=format_time(b.end)) for b in day.blackouts
         ],
         bookings=[BookingOut.from_row(b) for b in booking_rows],
-        assignment=dict(plan.zone_of) if plan.ok else {},
+        assignment=dict(plan.route_of) if plan.ok else {},
         dead_minutes=plan.dead_minutes if plan.ok else None,
         metrics=MetricsOut(
             seat_hour_use=metrics.seat_hour_use,

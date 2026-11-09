@@ -365,8 +365,8 @@ def book(
 # What the booking page says after a change, by the `done` query value.
 DONE_MESSAGES = {
     "changed": "Booking changed.",
-    "cancelled": "Booking cancelled. Its zones are free again.",
-    "no_show": "Marked as no-show. Its zones are free again.",
+    "cancelled": "Booking cancelled. Its zone slots are free again.",
+    "no_show": "Marked as no-show. Its zone slots are free again.",
 }
 
 

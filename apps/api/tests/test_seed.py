@@ -25,16 +25,16 @@ def test_busy_day_answers_like_the_check_cli(
     database_url: str, database: Database, client: TestClient
 ) -> None:
     assert seed(database_url) == 0  # busy-day.json is the default
-    # Same enquiry as `uv run check 2026-12-01 09:00 PREMIUM 10`: all zones taken at 09:30.
+    # Same enquiry as `uv run check 2026-12-01 09:00 PREMIUM 10`: zones A and B are full.
     params = {"date": "2026-12-01", "start": "09:00", "type": "PREMIUM", "adults": 10}
     body = client.get("/api/enquiries/check", params=params).json()
     assert body["verdict"] == "NOT_POSSIBLE"
-    assert body["reason"] == "All 4 zones are in use at 09:30."
+    assert body["reason"] == "Zones A and B are in use 09:00–11:00."
 
     day = client.get("/api/days/2026-12-01").json()
     assert len(day["bookings"]) == 7
     pinned = [s for b in day["bookings"] for s in b["sessions"] if s["pinned"]]
-    assert [(s["zoneId"], s["type"]) for s in pinned] == [("A", "PREMIUM_CT")]
+    assert [(s["route"], s["type"]) for s in pinned] == [("ABDC", "PREMIUM_CT")]
     assert day["bookings"][0]["customer"]["name"].startswith("Sample group")
 
 
@@ -71,7 +71,7 @@ def test_every_scenario_gives_the_same_answer_from_the_database(
         if found:
             problems[scenario["id"]] = found
     assert problems == {}
-    assert len(spec["scenarios"]) == 29
+    assert len(spec["scenarios"]) == 31
 
 
 def test_week_keeps_closed_days_and_blackouts(database_url: str, database: Database) -> None:
@@ -138,7 +138,7 @@ def test_a_day_file_path(database_url: str, tmp_path: Path, database: Database) 
     assert seed(database_url, str(day_file)) == 0
     with database.make_session() as db:
         sessions = list(db.scalars(select(models.Session)))
-    assert sorted((s.adults, s.children) for s in sessions) == [(5, 5), (25, 0)]
+    assert sorted((s.adults, s.children) for s in sessions) == [(12, 5), (18, 0)]
 
 
 def test_a_pinned_group_over_25_is_refused(
@@ -146,7 +146,7 @@ def test_a_pinned_group_over_25_is_refused(
 ) -> None:
     day_file = tmp_path / "bad.json"
     day_file.write_text(
-        '{"2026-12-10": [{"start": "10:00", "type": "PHE", "adults": 30, "zone": "A"}]}',
+        '{"2026-12-10": [{"start": "10:00", "type": "PHE", "adults": 30, "route": "ABCD", "pinned": true}]}',
         encoding="utf-8",
     )
     assert seed(database_url, str(day_file)) == 1

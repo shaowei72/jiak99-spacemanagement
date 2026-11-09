@@ -1,4 +1,4 @@
-"""Allocating zones, locking the day and pinning sessions (Operations), through the JSON API."""
+"""Allocating routes, locking the day and pinning sessions (Operations), through the JSON API."""
 
 from pathlib import Path
 from typing import Any
@@ -6,6 +6,7 @@ from typing import Any
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
+from engine.rules import ROUTES
 from jiak_api import models
 from jiak_api.db import Database
 from jiak_api.seed import main as seed
@@ -47,14 +48,14 @@ def test_allocate_stores_the_best_plan(client: TestClient, database: Database) -
     for start in ("09:00", "11:00", "13:00"):
         book(client, start)
     before = client.get(f"/api/days/{DATE}").json()
-    assert all(s["zoneId"] is None for s in sessions_of(before).values())
+    assert all(s["route"] is None for s in sessions_of(before).values())
 
     response = client.post(f"/api/days/{DATE}/allocate")
     assert response.status_code == 200
     day = response.json()
-    zones = {sid: s["zoneId"] for sid, s in sessions_of(day).items()}
-    assert set(zones.values()) <= {"A", "B", "C", "D"}
-    assert zones == day["assignment"]  # stored zones = the plan the day view shows
+    routes = {sid: s["route"] for sid, s in sessions_of(day).items()}
+    assert all(route in ROUTES["PREMIUM"] for route in routes.values())
+    assert routes == day["assignment"]  # stored routes = the plan the day view shows
     assert day["deadMinutes"] == 0
     assert audit_actions(database)[-1] == "day.allocate"
 
@@ -67,12 +68,12 @@ def test_allocate_twice_changes_nothing(client: TestClient, database: Database) 
     assert audit_actions(database).count("day.allocate") == 1  # no change, no audit entry
 
 
-def test_allocate_keeps_pinned_zones(client: TestClient, database_url: str) -> None:
-    assert seed(["--database-url", database_url, "--yes"]) == 0  # 09:00 PHE+CT pinned to A
+def test_allocate_keeps_pinned_routes(client: TestClient, database_url: str) -> None:
+    assert seed(["--database-url", database_url, "--yes"]) == 0  # 09:00 PHE+CT pinned to ABDC
     day = client.post(f"/api/days/{DATE}/allocate").json()
     pinned = [s for s in sessions_of(day).values() if s["pinned"]]
-    assert [(s["zoneId"], s["type"]) for s in pinned] == [("A", "PREMIUM_CT")]
-    assert all(s["zoneId"] is not None for s in sessions_of(day).values())
+    assert [(s["route"], s["type"]) for s in pinned] == [("ABDC", "PREMIUM_CT")]
+    assert all(s["route"] is not None for s in sessions_of(day).values())
 
 
 def test_allocate_reports_clashing_pins(
@@ -81,8 +82,8 @@ def test_allocate_reports_clashing_pins(
     day_file = tmp_path / "clash.json"
     day_file.write_text(
         '{"2026-12-01": ['
-        '{"start": "09:00", "type": "PHE+CT", "adults": 5, "zone": "A", "pinned": true},'
-        '{"start": "10:00", "type": "CHE", "adults": 5, "zone": "A", "pinned": true}]}',
+        '{"start": "09:00", "type": "PHE+CT", "adults": 5, "route": "ABCD", "pinned": true},'
+        '{"start": "09:00", "type": "CHE", "adults": 5, "route": "AD", "pinned": true}]}',
         encoding="utf-8",
     )
     assert seed([str(day_file), "--database-url", database_url, "--yes"]) == 0
@@ -117,7 +118,7 @@ def test_lock_allocates_and_freezes_every_session(client: TestClient, database: 
     day = response.json()
     assert day["locked"] is True
     for session in sessions_of(day).values():
-        assert session["zoneId"] in {"A", "B", "C", "D"}
+        assert session["route"] in ROUTES["PREMIUM"]
         assert session["status"] == "locked"
     with database.make_session() as db:
         day_row = db.get(models.DaySettings, DATE)
@@ -126,29 +127,29 @@ def test_lock_allocates_and_freezes_every_session(client: TestClient, database: 
     assert audit_actions(database)[-1] == "day.lock"
 
 
-def test_locked_zones_never_move(client: TestClient) -> None:
+def test_locked_routes_never_change(client: TestClient) -> None:
     first = book(client, "09:00", "CLASSIC")
-    locked_zone = sessions_of(client.post(f"/api/days/{DATE}/lock").json())[first]["zoneId"]
-    # More bookings and another allocation: the locked session stays where it is.
-    for _ in range(3):
-        book(client, "09:00", "PREMIUM_CT")
+    locked_route = sessions_of(client.post(f"/api/days/{DATE}/lock").json())[first]["route"]
+    # More bookings and another allocation: the locked session keeps its route.
+    for _ in range(2):
+        book(client, "09:00", "PREMIUM")
     day = client.post(f"/api/days/{DATE}/allocate").json()
     sessions = sessions_of(day)
-    assert sessions[first]["zoneId"] == locked_zone
-    # Sessions booked after the lock get a zone and are locked too, like the rest of the day.
+    assert sessions[first]["route"] == locked_route
+    # Sessions booked after the lock get a route and are locked too, like the rest of the day.
     assert {s["status"] for s in sessions.values()} == {"locked"}
-    assert sorted(s["zoneId"] for s in sessions.values()) == ["A", "B", "C", "D"]
+    assert all(s["route"] is not None for s in sessions.values())
 
 
-def test_unlock_keeps_zones_but_lets_them_move(client: TestClient, database: Database) -> None:
+def test_unlock_keeps_routes_but_lets_them_change(client: TestClient, database: Database) -> None:
     session_id = book(client)
-    zone = sessions_of(client.post(f"/api/days/{DATE}/lock").json())[session_id]["zoneId"]
+    route = sessions_of(client.post(f"/api/days/{DATE}/lock").json())[session_id]["route"]
     response = client.post(f"/api/days/{DATE}/unlock")
     assert response.status_code == 200
     day = response.json()
     assert day["locked"] is False
     session = sessions_of(day)[session_id]
-    assert (session["zoneId"], session["status"]) == (zone, "open")
+    assert (session["route"], session["status"]) == (route, "open")
     assert audit_actions(database)[-2:] == ["day.lock", "day.unlock"]
 
 
@@ -160,10 +161,10 @@ def test_lock_twice_or_unlock_an_open_day(client: TestClient) -> None:
 
 def test_unlock_keeps_pins(client: TestClient) -> None:
     session_id = book(client)
-    client.patch(f"/api/sessions/{session_id}/pin", json={"zone": "C"})
+    client.patch(f"/api/sessions/{session_id}/pin", json={"route": "DCBA"})
     client.post(f"/api/days/{DATE}/lock")
     session = sessions_of(client.post(f"/api/days/{DATE}/unlock").json())[session_id]
-    assert (session["zoneId"], session["pinned"]) == ("C", True)
+    assert (session["route"], session["pinned"]) == ("DCBA", True)
 
 
 def test_lock_and_unlock_need_operations(client: TestClient) -> None:
@@ -180,76 +181,79 @@ def test_calendar_shows_the_lock(client: TestClient) -> None:
 # --- pin -------------------------------------------------------------------------------------
 
 
-def test_pin_to_a_zone(client: TestClient, database: Database) -> None:
+def test_pin_to_a_route(client: TestClient, database: Database) -> None:
     session_id = book(client)
-    response = client.patch(f"/api/sessions/{session_id}/pin", json={"zone": "C"})
+    response = client.patch(f"/api/sessions/{session_id}/pin", json={"route": "dcba"})
     assert response.status_code == 200
     day = response.json()
     session = sessions_of(day)[session_id]
-    assert (session["zoneId"], session["pinned"]) == ("C", True)
-    assert day["assignment"][session_id] == "C"
+    assert (session["route"], session["pinned"]) == ("DCBA", True)
+    assert day["assignment"][session_id] == "DCBA"
     assert audit_actions(database)[-1] == "session.pin"
 
 
 def test_pin_moves_unpinned_groups_out_of_the_way(client: TestClient) -> None:
     first = book(client)
     second = book(client)
-    zones = sessions_of(client.post(f"/api/days/{DATE}/allocate").json())
-    taken = zones[second]["zoneId"]
+    routes = sessions_of(client.post(f"/api/days/{DATE}/allocate").json())
+    taken = routes[second]["route"]
 
-    day = client.patch(f"/api/sessions/{first}/pin", json={"zone": taken}).json()
+    day = client.patch(f"/api/sessions/{first}/pin", json={"route": taken}).json()
     sessions = sessions_of(day)
-    assert sessions[first]["zoneId"] == taken
-    assert sessions[second]["zoneId"] not in {taken, None}  # moved, not left clashing
+    assert sessions[first]["route"] == taken
+    assert sessions[second]["route"] not in {taken, None}  # re-routed, not left clashing
 
 
 def test_pin_into_a_clash_is_refused(client: TestClient) -> None:
     first = book(client)
     second = book(client)
-    assert client.patch(f"/api/sessions/{first}/pin", json={"zone": "A"}).status_code == 200
+    assert client.patch(f"/api/sessions/{first}/pin", json={"route": "ABCD"}).status_code == 200
 
-    response = client.patch(f"/api/sessions/{second}/pin", json={"zone": "A"})
+    response = client.patch(f"/api/sessions/{second}/pin", json={"route": "ABCD"})
     assert response.status_code == 409
-    assert "A" in response.json()["detail"]
+    assert response.json()["detail"] == "Route ABCD clashes with a pinned or locked group."
     session = sessions_of(client.get(f"/api/days/{DATE}").json())[second]
     assert session["pinned"] is False  # nothing changed
 
 
-def test_pin_to_the_current_zone(client: TestClient) -> None:
+def test_pin_to_the_current_route(client: TestClient) -> None:
     session_id = book(client)
-    # Not allocated yet: there is no zone to keep.
+    # Not allocated yet: there is no route to keep.
     response = client.patch(f"/api/sessions/{session_id}/pin", json={})
     assert response.status_code == 409
     assert "allocate" in response.json()["detail"].lower()
 
-    zone = sessions_of(client.post(f"/api/days/{DATE}/allocate").json())[session_id]["zoneId"]
+    route = sessions_of(client.post(f"/api/days/{DATE}/allocate").json())[session_id]["route"]
     day = client.patch(f"/api/sessions/{session_id}/pin", json={}).json()
-    assert sessions_of(day)[session_id]["zoneId"] == zone
+    assert sessions_of(day)[session_id]["route"] == route
     assert sessions_of(day)[session_id]["pinned"] is True
 
 
-def test_unpin_keeps_the_zone(client: TestClient, database: Database) -> None:
+def test_unpin_keeps_the_route(client: TestClient, database: Database) -> None:
     session_id = book(client)
-    client.patch(f"/api/sessions/{session_id}/pin", json={"zone": "D"})
+    client.patch(f"/api/sessions/{session_id}/pin", json={"route": "BADC"})
     response = client.patch(f"/api/sessions/{session_id}/pin", json={"pinned": False})
     assert response.status_code == 200
     session = sessions_of(response.json())[session_id]
-    assert (session["zoneId"], session["pinned"]) == ("D", False)
+    assert (session["route"], session["pinned"]) == ("BADC", False)
     assert audit_actions(database)[-1] == "session.unpin"
 
 
 def test_pinned_groups_stay_put_when_others_book(client: TestClient) -> None:
     session_id = book(client, "09:00", "CLASSIC")
-    client.patch(f"/api/sessions/{session_id}/pin", json={"zone": "B"})
-    for _ in range(3):
-        book(client, "09:00", "PREMIUM_CT")
+    client.patch(f"/api/sessions/{session_id}/pin", json={"route": "BA"})
+    for _ in range(2):
+        book(client, "09:00", "PREMIUM")
     day = client.post(f"/api/days/{DATE}/allocate").json()
-    assert sessions_of(day)[session_id]["zoneId"] == "B"
+    assert sessions_of(day)[session_id]["route"] == "BA"
 
 
-def test_pin_needs_operations_a_real_session_and_a_real_zone(client: TestClient) -> None:
+def test_pin_needs_operations_a_real_session_and_a_real_route(client: TestClient) -> None:
     session_id = book(client)
     url = f"/api/sessions/{session_id}/pin"
-    assert client.patch(url, json={"zone": "B"}, headers=SALES).status_code == 403
-    assert client.patch(url, json={"zone": "E"}).status_code == 422
-    assert client.patch("/api/sessions/nope/pin", json={"zone": "B"}).status_code == 404
+    assert client.patch(url, json={"route": "ABCD"}, headers=SALES).status_code == 403
+    assert client.patch(url, json={"route": "ABCE"}).status_code == 422  # no zone E
+    response = client.patch(url, json={"route": "AB"})  # a Classic route, not a Premium one
+    assert response.status_code == 409
+    assert response.json()["detail"] == "AB is not a route a PHE group can take."
+    assert client.patch("/api/sessions/nope/pin", json={"route": "ABCD"}).status_code == 404

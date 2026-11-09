@@ -78,11 +78,12 @@ class BookingPatchIn(ApiModel):
 class PinIn(ApiModel):
     """PATCH /sessions/:id/pin body.
 
-    {"zone": "B"} pins to zone B · {} pins to the current zone · {"pinned": false} unpins.
+    {"route": "ABDC"} pins to that route · {} pins to the current route · {"pinned": false}
+    unpins. A route is the zone letters in visiting order; it must suit the group's ticket.
     """
 
     pinned: bool = True
-    zone: Literal["A", "B", "C", "D"] | None = None
+    route: str | None = Field(default=None, pattern=r"^[A-Da-d]{1,4}$")
 
 
 class PriceIn(ApiModel):
@@ -93,7 +94,7 @@ class PriceIn(ApiModel):
 class SettingsBody(ApiModel):
     """GET /settings reply and PUT /settings body (SPEC §2). PUT needs every field."""
 
-    turnaround_minutes: int = Field(ge=0, le=120, description="Zone reset after a session")
+    turnaround_minutes: int = Field(ge=0, le=120, description="Zone reset after each visit")
     small_group_warn_below: int = Field(ge=0, le=25, description="0 = off")
     alternative_day_search: int = Field(ge=0, le=30, description="Days either side")
     availability_calendar_days: int = Field(ge=1, le=183, description="Outlook horizon")
@@ -127,7 +128,9 @@ class DaySettingsIn(ApiModel):
 class PlacementOut(ApiModel):
     kind: Literal["new", "split"]
     people: int | None = None  # kind "new"
-    new_sessions: list[int] | None = None  # kind "split": people per zone
+    route: str | None = None  # kind "new": e.g. "ADBC" (may change until the day is locked)
+    new_sessions: list[int] | None = None  # kind "split": people per sub-group
+    routes: list[str] | None = None  # kind "split": route of each sub-group
 
 
 class AlternativeOut(ApiModel):
@@ -162,9 +165,15 @@ class CheckOut(ApiModel):
     def from_engine(cls, result: EnquiryResult) -> "CheckOut":
         placement: PlacementOut | None = None
         if isinstance(result.placement, NewPlacement):
-            placement = PlacementOut(kind="new", people=result.placement.people)
+            placement = PlacementOut(
+                kind="new", people=result.placement.people, route=result.placement.route
+            )
         elif result.placement is not None:
-            placement = PlacementOut(kind="split", new_sessions=list(result.placement.new_sessions))
+            placement = PlacementOut(
+                kind="split",
+                new_sessions=list(result.placement.new_sessions),
+                routes=list(result.placement.routes),
+            )
         return cls(
             verdict=result.verdict,
             placement=placement,
@@ -196,7 +205,7 @@ class SessionOut(ApiModel):
     ticket_type: str = Field(alias="type")
     adults: int
     children: int
-    zone_id: str | None  # None = floating, no zone yet
+    route: str | None  # e.g. "ABDC"; None = floating, no route stored yet
     pinned: bool
     status: str
 
@@ -208,7 +217,7 @@ class SessionOut(ApiModel):
             ticket_type=row.ticket_type,
             adults=row.adults,
             children=row.children,
-            zone_id=row.zone_id,
+            route=row.route,
             pinned=row.pinned,
             status=row.status,
         )
@@ -335,7 +344,7 @@ class DayOut(ApiModel):
     locked: bool
     blackouts: list[BlackoutOut]
     bookings: list[BookingOut]
-    # The engine's best zone plan right now: session id -> zone. Empty if nothing fits.
+    # The engine's best plan right now: session id -> route. Empty if nothing fits.
     assignment: dict[str, str]
     dead_minutes: int | None
     metrics: MetricsOut

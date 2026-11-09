@@ -1,8 +1,10 @@
-"""The day's zone plan, for operations: allocate, lock / unlock, pin (SPEC §5.3).
+"""The day's plan, for operations: allocate, lock / unlock, pin (SPEC §5.3).
 
-Which sessions may move? (The engine decides this from the session itself, see `is_fixed`.)
-- Allocated only (zone stored, not pinned, day not locked): may still move when the plan changes.
-- Pinned (ops chose the zone) or locked (the day is locked): never moved automatically.
+The plan gives every group a route: the order in which it visits its zones, e.g. "ABDC".
+
+Which routes may change? (The engine decides this from the session itself, see `is_fixed`.)
+- Allocated only (route stored, not pinned, day not locked): may still change when the plan does.
+- Pinned (ops chose the route) or locked (the day is locked): never changed automatically.
 
 Every change happens under the date's lock, like bookings, so a booking and an allocation of the
 same day can't interleave.
@@ -15,6 +17,7 @@ from sqlalchemy.orm import Session
 
 from engine import assign
 from engine.model import day_of
+from engine.rules import TICKET_SHORT_NAMES, TicketType, is_valid_route
 from jiak_api import audit, models
 from jiak_api.db import Database
 from jiak_api.models import utc_now
@@ -30,7 +33,7 @@ class PlanConflict(Exception):
 
 
 def allocate_day(database: Database, db: Session, date: str, *, actor: str) -> None:
-    """Store the best zone plan: every movable session gets a zone. Fixed ones stay put."""
+    """Store the best plan: every movable session gets a route. Fixed ones keep theirs."""
     with database.date_lock(db, date):
         changes = store_plan(db, date)
         if changes:
@@ -47,10 +50,7 @@ def allocate_day(database: Database, db: Session, date: str, *, actor: str) -> N
 
 
 def lock_day(database: Database, db: Session, date: str, *, actor: str) -> None:
-    """Allocate, then freeze every session's zone and mark the day locked.
-
-    (Writing the zone calendars in Outlook on lock is added in Milestone 4.)
-    """
+    """Allocate, then freeze every session's route and mark the day locked."""
     with database.date_lock(db, date):
         day_row = db.get(models.DaySettings, date)
         if day_row is not None and day_row.locked_at is not None:
@@ -73,7 +73,7 @@ def lock_day(database: Database, db: Session, date: str, *, actor: str) -> None:
 
 
 def unlock_day(database: Database, db: Session, date: str, *, actor: str) -> None:
-    """Unfreeze the day. Sessions keep their zones (and pins), but unpinned ones may move again."""
+    """Unfreeze the day. Sessions keep their routes (and pins); unpinned ones may change again."""
     with database.date_lock(db, date):
         day_row = db.get(models.DaySettings, date)
         if day_row is None or day_row.locked_at is None:
@@ -102,13 +102,13 @@ def pin_session(
     session_id: str,
     *,
     pinned: bool,
-    zone: str | None,
+    route: str | None,
     actor: str,
 ) -> str:
-    """Pin a session to `zone` (or to its current zone), or unpin it. Returns the session's date.
+    """Pin a session to `route` (or to its current route), or unpin it. Returns the session's date.
 
     Pinning re-plans the other movable sessions around it; if no valid plan is left, PlanConflict
-    and nothing changes. Unpinning keeps the zone, it only lets the session move again.
+    and nothing changes. Unpinning keeps the route, it only lets it change again.
     """
     row = db.get(models.Session, session_id)
     if row is None:
@@ -119,18 +119,23 @@ def pin_session(
         row = db.get(models.Session, session_id, populate_existing=True)
         if row is None:
             raise SessionNotFound(session_id)
-        before = {"zoneId": row.zone_id, "pinned": row.pinned}
+        before = {"route": row.route, "pinned": row.pinned}
 
         if not pinned:
             row.pinned = False
             action = "session.unpin"
         else:
-            target = zone if zone is not None else row.zone_id
+            target = route.upper() if route is not None else row.route
             if target is None:
                 raise PlanConflict(
-                    "This group has no zone yet. Choose a zone, or allocate the day first."
+                    "This group has no route yet. Choose one, or allocate the day first."
                 )
-            row.zone_id = target
+            ticket_type: TicketType = row.ticket_type  # type: ignore[assignment]
+            if not is_valid_route(ticket_type, target):
+                raise PlanConflict(
+                    f"{target} is not a route a {TICKET_SHORT_NAMES[ticket_type]} group can take."
+                )
+            row.route = target
             row.pinned = True
             action = "session.pin"
             try:
@@ -138,10 +143,10 @@ def pin_session(
             except PlanConflict:
                 db.rollback()
                 raise PlanConflict(
-                    f"Zone {target} is taken at that time by a pinned or locked group."
+                    f"Route {target} clashes with a pinned or locked group."
                 ) from None
 
-        after = {"zoneId": row.zone_id, "pinned": row.pinned}
+        after = {"route": row.route, "pinned": row.pinned}
         if after != before:
             audit.record(
                 db,
@@ -170,7 +175,7 @@ def sessions_on(db: Session, date: str) -> list[models.Session]:
 
 
 def store_plan(db: Session, date: str, *, locked: bool | None = None) -> dict[str, dict[str, Any]]:
-    """Run the engine's `assign` for `date` and store its zones on the session rows.
+    """Run the engine's `assign` for `date` and store its routes on the session rows.
 
     On a locked day (or with locked=True) every open session is locked as well, so sessions
     booked after the lock are frozen like the rest. Returns what changed, per session id.
@@ -183,15 +188,15 @@ def store_plan(db: Session, date: str, *, locked: bool | None = None) -> dict[st
     day = day_of(load_schedule(db, date, date), date)
     plan = assign(day.sessions, load_settings(db), blackouts=day.blackouts)
     if not plan.ok:
-        raise PlanConflict(f"The sessions on {date} don't fit in 4 zones; check the pins.")
+        raise PlanConflict(f"The groups on {date} don't all fit; check the pins.")
 
     changes: dict[str, dict[str, Any]] = {}
     for row in rows:
-        before = {"zoneId": row.zone_id, "status": row.status}
-        row.zone_id = plan.zone_of[row.id]
+        before = {"route": row.route, "status": row.status}
+        row.route = plan.route_of[row.id]
         if locked and row.status == "open":
             row.status = "locked"
-        after = {"zoneId": row.zone_id, "status": row.status}
+        after = {"route": row.route, "status": row.status}
         if after != before:
             changes[row.id] = {"before": before, "after": after}
     return changes

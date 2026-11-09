@@ -12,7 +12,7 @@
   <p class="headline">{{ headline }}</p>
   <p class="reason">{{ check.reason }}</p>
   {% if check.placement and check.placement.kind == "split" %}
-  <p class="detail">Needs {{ check.placement.new_sessions | length }} zones:
+  <p class="detail">Split into {{ check.placement.new_sessions | length }} groups:
     {{ check.placement.new_sessions | join(" + ") }} people.</p>
   {% endif %}
   {% if no_longer_fits %}
