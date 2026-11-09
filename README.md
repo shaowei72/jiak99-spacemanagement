@@ -1,5 +1,7 @@
 # Jiak99 zone capacity app
 
+> **Running a demo on another PC? Follow [DEMO.md](DEMO.md).**
+
 Helps sales and operations sell and allocate 4 identical zones (up to 25 people each). Each group gets a zone of
 its own: once a zone is taken, it is sold out for that time slot, however few people are in it.
 
@@ -17,7 +19,9 @@ renamed without touching data.
 
 ## Status
 
-MVP 0 (Milestone 1, the engine) is done: `packages/engine`, plus a command-line tool to try it.
+Done: Milestone 1 (the engine, `packages/engine`, plus a command-line tool), Milestone 2 (API + database) and
+Milestone 3 (web pages: Enquiry check with Book, availability board, 6-month calendar, operations timeline,
+settings). Next: Milestone 4, Outlook sync.
 
 ## Setup
 
@@ -69,7 +73,16 @@ uv run alembic upgrade head                      # create or update the tables (
 uv run uvicorn jiak_api.main:app --reload        # dev server; try the routes at http://127.0.0.1:8000/docs
 ```
 
-Read-only views to try in the browser once the server runs (after `uv run seed`):
+Web pages: http://127.0.0.1:8000/ opens the **Enquiry check**. A good or costly
+verdict and each alternative has a **Book** button: fill in the customer's name (phone, email, company and notes
+are optional) and press Book. If the slot filled up after the check (when pressing either Book button), the page
+says **No longer fits** and shows fresh alternatives; "Not possible" is only the answer to Check. Each booking has its own page, `/bookings/<id>`.
+
+The other pages (top menu): **Board** (`/board`, what a group size can still book), **Calendar** (`/calendar`, six
+months coloured by seat-hour use), **Operations** (`/ops`, zones × time with dead gaps; allocate, lock, pin,
+closed day and blocked times) and **Settings** (`/settings`).
+
+The same data as JSON, once the server runs (after `uv run seed`):
 
 - http://127.0.0.1:8000/api/availability?date=2026-12-01&n=10 — the sales board for a group of 10
 - http://127.0.0.1:8000/api/calendar?from=2026-12-01&to=2027-05-31 — per-day use for the 6-month calendar

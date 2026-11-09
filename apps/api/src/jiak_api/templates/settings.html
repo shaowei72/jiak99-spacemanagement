@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}Settings{% endblock %}
+{% block content %}
+<h1>Settings</h1>
+
+{% if saved %}<div class="card good verdict"><p class="headline">Saved.</p></div>{% endif %}
+{% include "_errors.html" %}
+
+<form method="post" action="/settings" class="settings">
+  <label>Turnaround after each session (minutes)
+    <input type="number" name="turnaroundMinutes" value="{{ form.turnaroundMinutes }}" min="0" max="120">
+  </label>
+  <label>Warn when a new zone opens for fewer than (people, 0 = off)
+    <input type="number" name="smallGroupWarnBelow" value="{{ form.smallGroupWarnBelow }}" min="0" max="25">
+  </label>
+  <label>"Another day" alternatives: days searched either side
+    <input type="number" name="alternativeDaySearch" value="{{ form.alternativeDaySearch }}" min="0" max="30">
+  </label>
+  <label>Outlook availability calendar: days ahead
+    <input type="number" name="availabilityCalendarDays" value="{{ form.availabilityCalendarDays }}" min="1" max="183">
+  </label>
+
+  <fieldset class="wide">
+    <legend>Prices in dollars (optional; used only to break ties and in metrics)</legend>
+    <table class="prices">
+      <thead><tr><th>Ticket</th><th>Adult</th><th>Child</th></tr></thead>
+      <tbody>
+        {% for code in ticket_types %}
+        <tr>
+          <th title="{{ ticket_names[code] }}">{{ short_names[code] }}</th>
+          <td><input name="{{ code }}_adult" value="{{ form[code ~ '_adult'] }}" inputmode="decimal" aria-label="{{ short_names[code] }} adult price"></td>
+          <td><input name="{{ code }}_child" value="{{ form[code ~ '_child'] }}" inputmode="decimal" aria-label="{{ short_names[code] }} child price"></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </fieldset>
+
+  <p class="wide"><button type="submit">Save settings</button></p>
+</form>
+<p class="detail">Saving is refused if a booked day from today on would no longer fit. Closed days and
+blocked times are set per day on the <a href="/ops">Operations</a> page.</p>
+{% endblock %}

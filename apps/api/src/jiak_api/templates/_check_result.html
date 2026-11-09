@@ -1,0 +1,48 @@
+{# The answer part of the Enquiry check page. HTMX swaps just this in after each check. #}
+{% if errors %}
+<div class="card errors">
+  <ul>
+    {% for message in errors %}<li>{{ message }}</li>{% endfor %}
+  </ul>
+</div>
+{% elif check %}
+{% set headline, look = verdict_looks[check.verdict] %}
+{% if no_longer_fits %}{% set headline = "No longer fits" %}{% endif %}
+<div class="card verdict {{ look }}">
+  <p class="headline">{{ headline }}</p>
+  <p class="reason">{{ check.reason }}</p>
+  {% if check.placement and check.placement.kind == "split" %}
+  <p class="detail">Needs {{ check.placement.new_sessions | length }} zones:
+    {{ check.placement.new_sessions | join(" + ") }} people.</p>
+  {% endif %}
+  {% if no_longer_fits %}
+  <p class="detail">It filled up after the check. Nothing was booked; offer an alternative.</p>
+  {% elif check.verdict != "NOT_POSSIBLE" %}
+  {% set url = book_url(form.date, form.start, form.type, form.adults, form.children) %}
+  <p class="actions">
+    <a class="button" href="{{ url }}" hx-get="{{ url }}"
+       hx-target="#result" hx-push-url="true">Book this</a>
+  </p>
+  {% endif %}
+</div>
+
+{% if check.alternatives %}
+<h2>Alternatives</h2>
+<ul class="alternatives">
+  {% for alt in check.alternatives %}
+  {% set alt_headline, alt_look = verdict_looks[alt.verdict] %}
+  <li class="card alt {{ alt_look }}">
+    <p class="headline">{{ alt.change_summary }}</p>
+    <p class="detail">{{ alt.date }} · {{ alt.start }} · {{ short_names[alt.ticket_type] }} — {{ alt.gain_summary }}</p>
+    {% if alt.verdict != "NOT_POSSIBLE" %}
+    {% set url = book_url(alt.date, alt.start, alt.ticket_type, form.adults, form.children) %}
+    <p class="actions">
+      <a class="button secondary" href="{{ url }}" hx-get="{{ url }}"
+         hx-target="#result" hx-push-url="true">Book</a>
+    </p>
+    {% endif %}
+  </li>
+  {% endfor %}
+</ul>
+{% endif %}
+{% endif %}

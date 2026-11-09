@@ -1,0 +1,53 @@
+{# The customer form after a Book button. The enquiry rides along in hidden fields; the
+   server checks it again when the form is sent. #}
+<div class="card booking-summary">
+  <p class="headline">Book {{ form.date }} · {{ form.start }} · {{ short_names.get(form.type, form.type) }}</p>
+  <p class="detail">{{ ticket_names.get(form.type, "") }}</p>
+  {% if check %}
+  {% set headline, look = verdict_looks[check.verdict] %}
+  <p class="{{ look }}"><strong class="headline">{{ headline }}</strong> — {{ check.reason }}</p>
+  {% endif %}
+</div>
+
+{% if errors %}
+<div class="card errors">
+  <ul>
+    {% for message in errors %}<li>{{ message }}</li>{% endfor %}
+  </ul>
+</div>
+{% endif %}
+
+{# hx-disabled-elt: the Book button is greyed out while the booking is being made, so a
+   double click can't book the group twice. #}
+<form class="customer" method="post" action="/enquiry/book"
+      hx-post="/enquiry/book" hx-target="#result" hx-disabled-elt="find button[type=submit]">
+  <input type="hidden" name="date" value="{{ form.date }}">
+  <input type="hidden" name="start" value="{{ form.start }}">
+  <input type="hidden" name="type" value="{{ form.type }}">
+  <label>Adults
+    <input type="number" name="adults" value="{{ form.adults }}" min="0" max="100" inputmode="numeric" required>
+  </label>
+  <label>Children
+    <input type="number" name="children" value="{{ form.children }}" min="0" max="100" inputmode="numeric">
+  </label>
+  <label class="wide">Customer name
+    <input type="text" name="name" value="{{ customer.name }}" maxlength="200" required autofocus>
+  </label>
+  <label>Phone
+    <input type="tel" name="phone" value="{{ customer.phone }}">
+  </label>
+  <label>Email
+    <input type="email" name="email" value="{{ customer.email }}">
+  </label>
+  <label class="wide">Company
+    <input type="text" name="company" value="{{ customer.company }}">
+  </label>
+  <label class="wide">Notes
+    <textarea name="notes" rows="2">{{ customer.notes }}</textarea>
+  </label>
+  <div class="wide buttons">
+    <button type="submit">Book</button>
+    {% set back = check_url(form.date, form.start, form.type, form.adults, form.children) %}
+    <a href="{{ back }}" hx-get="{{ back }}" hx-target="#result" hx-push-url="true">Back to the check</a>
+  </div>
+</form>
