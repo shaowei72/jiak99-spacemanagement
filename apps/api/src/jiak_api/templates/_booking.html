@@ -1,5 +1,11 @@
 {# One booking. Shown right after booking (just_booked) and at /bookings/<id>. #}
 {% set status_looks = {"confirmed": "good", "cancelled": "no", "no_show": "no"} %}
+{% if done %}<div class="card good verdict" role="status"><p class="headline">{{ done }}</p></div>{% endif %}
+{% if errors %}
+<div class="card errors" role="alert">
+  <ul>{% for message in errors %}<li>{{ message }}</li>{% endfor %}</ul>
+</div>
+{% endif %}
 <div class="card verdict {{ status_looks.get(booking.status, '') }}">
   {% if just_booked %}
   <p class="headline">Booked</p>
@@ -17,5 +23,22 @@
   {% endif %}
   {% if booking.notes %}<p class="detail">Notes: {{ booking.notes }}</p>{% endif %}
   <p class="detail">Ref {{ booking.id }} · by {{ booking.created_by }}</p>
+  {% if can_change or can_no_show %}
+  <div class="buttons actions">
+    {% if can_change %}
+    <a class="button secondary" href="/bookings/{{ booking.id }}/edit">Edit</a>
+    <a class="button secondary danger" href="/bookings/{{ booking.id }}/cancel">Cancel booking</a>
+    {% endif %}
+    {% if can_no_show %}
+    <form method="post" action="/bookings/{{ booking.id }}/no-show" class="inline">
+      <button type="submit" class="small secondary-button">Mark no-show</button>
+    </form>
+    {% endif %}
+  </div>
+  {% endif %}
 </div>
-<p class="actions"><a class="button" href="/enquiry">New enquiry</a></p>
+<p class="buttons actions">
+  <a class="button" href="/enquiry">New enquiry</a>
+  <a href="/bookings">All bookings</a>
+  <a href="/ops?date={{ booking.date }}">Day plan for {{ booking.date }}</a>
+</p>

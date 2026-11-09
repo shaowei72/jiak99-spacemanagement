@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block title %}Edit booking{% endblock %}
+{% block content %}
+<h1>Edit booking</h1>
+<p class="detail">
+  Now: {{ booking.date }} · {{ booking.start }} · {{ short_names[booking.ticket_type] }} ·
+  {{ people(booking.adults, booking.children) }} · <a href="/bookings/{{ booking.id }}">{{ booking.customer.name }}</a>
+</p>
+
+{% if booking.status != "confirmed" %}
+<div class="card no"><p class="headline">This booking is {{ booking.status | replace("_", " ") }}.</p>
+  <p class="detail">Only confirmed bookings can be changed. Make a new booking instead.</p></div>
+{% else %}
+
+{% include "_errors.html" %}
+
+{% if check %}
+<div class="card verdict no" role="alert">
+  <p class="headline">The change doesn't fit</p>
+  <p class="reason">{{ check.reason }}</p>
+  <p class="detail">Nothing was changed; the booking stays as it was.</p>
+</div>
+{% if check.alternatives %}
+<h2>Alternatives</h2>
+<ul class="alternatives">
+  {% for alt in check.alternatives %}
+  {% if alt.verdict != "NOT_POSSIBLE" %}
+  <li class="card alt">
+    <p class="headline">{{ alt.change_summary }}</p>
+    <p class="detail">{{ alt.date }} · {{ alt.start }} · {{ short_names[alt.ticket_type] }} — {{ alt.gain_summary }}</p>
+    <p class="actions"><a class="button secondary"
+       href="/bookings/{{ booking.id }}/edit?date={{ alt.date }}&start={{ alt.start }}&type={{ alt.ticket_type }}&adults={{ form.adults }}&children={{ form.children }}">Use this</a></p>
+  </li>
+  {% endif %}
+  {% endfor %}
+</ul>
+{% endif %}
+{% endif %}
+
+<form class="customer" method="post" action="/bookings/{{ booking.id }}/edit">
+  <label>Date
+    <input type="date" name="date" value="{{ form.date }}" required>
+  </label>
+  <label>Start
+    <input type="time" name="start" value="{{ form.start }}" step="900" required>
+  </label>
+  <label class="wide">Ticket
+    <select name="type">
+      {% for choice in ticket_choices %}
+      <option value="{{ choice.code }}" {% if choice.code == form.type %}selected{% endif %}>{{ choice.label }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  <label>Adults
+    <input type="number" name="adults" value="{{ form.adults }}" min="0" max="100" inputmode="numeric" required>
+  </label>
+  <label>Children
+    <input type="number" name="children" value="{{ form.children }}" min="0" max="100" inputmode="numeric">
+  </label>
+  <label class="wide">Customer name
+    <input type="text" name="name" value="{{ form.name }}" maxlength="200" required>
+  </label>
+  <label>Phone <input type="tel" name="phone" value="{{ form.phone }}"></label>
+  <label>Email <input type="email" name="email" value="{{ form.email }}"></label>
+  <label class="wide">Company <input type="text" name="company" value="{{ form.company }}"></label>
+  <label class="wide">Notes <textarea name="notes" rows="2">{{ form.notes }}</textarea></label>
+  <div class="wide buttons">
+    <button type="submit">Save changes</button>
+    <a href="/bookings/{{ booking.id }}">Back without saving</a>
+  </div>
+</form>
+<p class="detail">A new date, time, ticket or headcount is checked again like a new booking.</p>
+{% endif %}
+{% endblock %}

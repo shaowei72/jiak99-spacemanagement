@@ -20,8 +20,8 @@ renamed without touching data.
 ## Status
 
 Done: Milestone 1 (the engine, `packages/engine`, plus a command-line tool), Milestone 2 (API + database) and
-Milestone 3 (web pages: Check and book, Day plan, 6-month calendar, settings). In progress: a Bookings page
-(list, edit, cancel). Then Milestone 4, Outlook sync.
+Milestone 3 (web pages: Check and book, Bookings, Day plan, 6-month calendar, settings). Next: Milestone 4,
+Outlook sync.
 
 ## Setup
 
@@ -79,7 +79,8 @@ verdict and each alternative has a **Book** button: fill in the customer's name 
 are optional) and press Book. If the slot filled up after the check (when pressing either Book button), the page
 says **No longer fits** and shows fresh alternatives; "Not possible" is only the answer to Check. Each booking has its own page, `/bookings/<id>`.
 
-The other pages (top menu): **Day plan** (`/ops`, zones × time with dead gaps; allocate, lock, pin, closed day and
+The other pages (top menu): **Bookings** (`/bookings`, the list from today on, filter by dates and customer;
+each booking can be edited, cancelled or marked no-show), **Day plan** (`/ops`, zones × time with dead gaps; allocate, lock, pin, closed day and
 blocked times), **Calendar** (`/calendar`, six months coloured by seat-hour use) and **Settings** (`/settings`). The
 full availability grid is still at `/board`, without a menu link.
 

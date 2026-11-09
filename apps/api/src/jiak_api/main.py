@@ -11,6 +11,7 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
+from jiak_api.booking_pages import router as booking_pages_router
 from jiak_api.bookings import NoLongerFits
 from jiak_api.clock import Now, singapore_now
 from jiak_api.config import load_config
@@ -30,6 +31,7 @@ def create_app(database: Database, clock: Callable[[], Now] = singapore_now) -> 
     app.include_router(router)
     app.include_router(pages_router)
     app.include_router(ops_pages_router)
+    app.include_router(booking_pages_router)
     app.mount("/static", StaticFiles(directory=STATIC), name="static")
     app.add_exception_handler(NoLongerFits, no_longer_fits_handler)
     return app

@@ -209,3 +209,17 @@ th, td { padding: 0.3rem 0.5rem; border: 1px solid var(--line); text-align: left
 }
 .chip:hover { background: #e7effa; }
 .chip.current { background: var(--accent); color: #fff; }
+
+/* Bookings list and booking actions */
+.bookings-list .day-row th { background: #eef2f7; font-weight: 700; }
+.bookings-list .day-row a { font-weight: 400; font-size: 0.9rem; }
+.bookings-list tr.inactive td { color: var(--muted); text-decoration: line-through; }
+.bookings-list tr.inactive td:nth-child(5) { text-decoration: none; }
+.button.danger { color: var(--no); border-color: var(--no); }
+button.danger-button { background: var(--no); border-color: var(--no); }
+.pick > a { align-self: center; color: var(--accent); }
+.buttons a.button:not(.secondary) { color: #fff; }  /* a filled button keeps white text in a .buttons row */
+.customer select {
+  font: inherit; color: var(--ink); padding: 0.45rem 0.5rem;
+  border: 1px solid var(--line); border-radius: 6px; background: #fff; width: 100%;
+}

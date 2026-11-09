@@ -21,6 +21,7 @@ from engine.dates import weekday
 from engine.rules import TICKET_NAMES, TICKET_SHORT_NAMES, TICKET_TYPES, TicketType
 from engine.text import duration_label, format_time
 from jiak_api import bookings, models, overview
+from jiak_api.auth import User
 from jiak_api.clock import Now
 from jiak_api.routes import AnyUser, DatabaseDep, DbDep, NowDep, SalesUser, to_enquiry
 from jiak_api.schemas import BookingOut, CheckOut, EnquiryIn
@@ -361,15 +362,42 @@ def book(
     return response
 
 
+# What the booking page says after a change, by the `done` query value.
+DONE_MESSAGES = {
+    "changed": "Booking changed.",
+    "cancelled": "Booking cancelled. Its zones are free again.",
+    "no_show": "Marked as no-show. Its zones are free again.",
+}
+
+
 @router.get("/bookings/{booking_id}", response_class=HTMLResponse)
 def booking_page(
-    request: Request, booking_id: str, db: DbDep, now: NowDep, _user: AnyUser
+    request: Request,
+    booking_id: str,
+    db: DbDep,
+    now: NowDep,
+    user: AnyUser,
+    done: Annotated[str | None, Query()] = None,
 ) -> Response:
-    """One booking: who, when, which ticket, how many."""
+    """One booking: who, when, which ticket, how many, and what can be done with it."""
     row = db.get(models.Booking, booking_id)
     if row is None:
         form = enquiry_form(now.today, None, None, None, None, None)
         return render(request, "_not_found.html", {"form": form}, status_code=404)
+    return booking_view(request, row, now, user, done=DONE_MESSAGES.get(done or ""))
+
+
+def booking_view(
+    request: Request,
+    row: models.Booking,
+    now: Now,
+    user: User,
+    *,
+    done: str | None = None,
+    errors: list[str] | None = None,
+    status_code: int = 200,
+) -> Response:
+    """The booking's page, optionally with a 'done' message or error messages."""
     booking = BookingOut.from_row(row)
     form = enquiry_form(
         now.today,
@@ -379,4 +407,13 @@ def booking_page(
         str(booking.adults),
         str(booking.children),
     )
-    return render(request, "_booking.html", {"form": form, "booking": booking})
+    confirmed = booking.status == "confirmed"
+    context = {
+        "form": form,
+        "booking": booking,
+        "done": done,
+        "errors": errors or [],
+        "can_change": confirmed and user.can("Sales"),
+        "can_no_show": confirmed and user.can("Operations") and bookings.has_started(row, now),
+    }
+    return render(request, "_booking.html", context, status_code=status_code)
