@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}Availability board{% endblock %}
+{% block content %}
+<h1>Availability board</h1>
+
+<form class="pick" method="get" action="/board">
+  <label>Date <input type="date" name="date" value="{{ date }}" required></label>
+  <label>Group size <input type="number" name="n" value="{{ people }}" min="1" max="100" inputmode="numeric"></label>
+  <button type="submit">Show</button>
+</form>
+<p class="daynav">
+  <a href="/board?date={{ previous_day }}&n={{ people }}">&larr; Previous day</a>
+  <strong>{{ weekday }} {{ date }}</strong>
+  <a href="/board?date={{ next_day }}&n={{ people }}">Next day &rarr;</a>
+</p>
+
+{% include "_errors.html" %}
+
+{% if board.closed %}
+<div class="card no"><p class="headline">Closed</p><p class="detail">Nothing can be sold on this day.</p></div>
+{% else %}
+<p class="detail">What a group of {{ people }} can still book. Click a free slot to check it.</p>
+<table class="board">
+  <thead>
+    <tr>
+      <th>Start</th>
+      {% for t in board.ticket_types %}<th title="{{ t.name }}">{{ t.label }}</th>{% endfor %}
+    </tr>
+  </thead>
+  <tbody>
+    {% for row in board.rows %}
+    <tr>
+      <th>{{ row.start }}</th>
+      {% for t in board.ticket_types %}
+      {% set status = row.statuses.get(t.code, "not_offered") %}
+      {% if status == "available" %}
+      <td class="slot available"><a href="{{ check_url(date, row.start, t.code, people|string, '0') }}" title="Check {{ t.label }} at {{ row.start }}">Free</a></td>
+      {% elif status == "full" %}
+      <td class="slot full">Full</td>
+      {% else %}
+      <td class="slot not-offered" title="Not sold at this time">–</td>
+      {% endif %}
+      {% endfor %}
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+{% endblock %}

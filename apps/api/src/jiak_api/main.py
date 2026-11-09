@@ -15,6 +15,7 @@ from jiak_api.bookings import NoLongerFits
 from jiak_api.clock import Now, singapore_now
 from jiak_api.config import load_config
 from jiak_api.db import Database
+from jiak_api.ops_pages import router as ops_pages_router
 from jiak_api.pages import router as pages_router
 from jiak_api.routes import no_longer_fits_handler, router
 
@@ -28,6 +29,7 @@ def create_app(database: Database, clock: Callable[[], Now] = singapore_now) -> 
     app.state.clock = clock
     app.include_router(router)
     app.include_router(pages_router)
+    app.include_router(ops_pages_router)
     app.mount("/static", StaticFiles(directory=STATIC), name="static")
     app.add_exception_handler(NoLongerFits, no_longer_fits_handler)
     return app

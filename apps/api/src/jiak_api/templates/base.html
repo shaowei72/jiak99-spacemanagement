@@ -21,9 +21,13 @@
     <span class="brand">Jiak99</span>
     <nav>
       <a href="/enquiry">Enquiry check</a>
+      <a href="/board">Board</a>
+      <a href="/calendar">Calendar</a>
+      <a href="/ops">Operations</a>
+      <a href="/settings">Settings</a>
     </nav>
   </header>
-  <main>
+  <main class="{% block main_class %}{% endblock %}">
     {% block content %}{% endblock %}
   </main>
 </body>

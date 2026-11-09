@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}Calendar{% endblock %}
+{% block main_class %}wide{% endblock %}
+{% block content %}
+<h1>Calendar</h1>
+<p class="daynav">
+  <a href="/calendar?start={{ earlier }}">&larr; Earlier</a>
+  <a href="/calendar">This month</a>
+  <a href="/calendar?start={{ later }}">Later &rarr;</a>
+</p>
+<p class="legend">
+  Seat-hour use:
+  <span class="key use0">none</span>
+  <span class="key use1">under 25%</span>
+  <span class="key use2">25–50%</span>
+  <span class="key use3">50–75%</span>
+  <span class="key use4">75% +</span>
+  <span class="key closed">closed</span>
+  &nbsp;🔒 locked
+</p>
+
+<div class="months">
+  {% for month in months %}
+  <table class="month">
+    <caption>{{ month.title }}</caption>
+    <thead><tr>{% for name in weekdays %}<th>{{ name[:2] }}</th>{% endfor %}</tr></thead>
+    <tbody>
+      {% for week in month.weeks %}
+      <tr>
+        {% for cell in week %}
+        {% if cell %}
+        {% set d = cell.day %}
+        <td class="{{ 'closed' if d.closed else cell.band }}{{ ' past' if cell.is_past }}{{ ' today' if cell.is_today }}">
+          <a href="/ops?date={{ cell.date }}"
+             title="{{ d.weekday }} {{ cell.date }}{% if d.closed %} · closed{% else %} · {{ d.bookings }} bookings, {{ d.people }} people · seat-hour use {{ percent(d.seat_hour_use) }} · zone-hour use {{ percent(d.zone_hour_use) }}{% endif %}{% if d.locked %} · locked{% endif %}">
+            {{ cell.day_number }}{% if d.locked %}<span class="lock">🔒</span>{% endif %}
+          </a>
+        </td>
+        {% else %}
+        <td class="blank"></td>
+        {% endif %}
+        {% endfor %}
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endfor %}
+</div>
+{% endblock %}

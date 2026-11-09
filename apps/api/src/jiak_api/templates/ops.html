@@ -1,0 +1,118 @@
+{% extends "base.html" %}
+{% block title %}Operations {{ date }}{% endblock %}
+{% block main_class %}wide{% endblock %}
+{% block content %}
+<h1>Operations</h1>
+
+<form class="pick" method="get" action="/ops">
+  <label>Date <input type="date" name="date" value="{{ date }}" required></label>
+  <button type="submit">Show</button>
+</form>
+<p class="daynav">
+  <a href="/ops?date={{ previous_day }}">&larr; Previous day</a>
+  <strong>{{ weekday }} {{ date }}</strong>
+  {% if view.closed %}<span class="tag closed-tag">Closed</span>{% endif %}
+  {% if view.locked %}<span class="tag">🔒 Locked</span>{% endif %}
+  <a href="/ops?date={{ next_day }}">Next day &rarr;</a>
+</p>
+
+{% include "_errors.html" %}
+
+<div class="buttons">
+  <form method="post" action="/ops/{{ date }}/allocate">
+    <button type="submit" title="Give every movable group its zone from the best plan">Allocate</button>
+  </form>
+  {% if view.locked %}
+  <form method="post" action="/ops/{{ date }}/unlock">
+    <button type="submit" class="secondary-button" title="Unpinned groups may move again">Unlock day</button>
+  </form>
+  {% else %}
+  <form method="post" action="/ops/{{ date }}/lock">
+    <button type="submit" title="Allocate, then freeze every zone">Lock day</button>
+  </form>
+  {% endif %}
+</div>
+
+<div class="timeline" role="img" aria-label="Zones A to D from 09:00 to 21:00">
+  <div class="zone-row hours">
+    <span class="zone-name"></span>
+    <div class="track">
+      {% for hour in hours %}<span class="hour" style="left: {{ (loop.index0 / (hours|length - 1) * 100) | round(3) }}%">{{ hour[:2] }}</span>{% endfor %}
+    </div>
+  </div>
+  {% for row in rows %}
+  <div class="zone-row">
+    <span class="zone-name">{{ row.zone }}</span>
+    <div class="track">
+      {% for bar in row.bars %}
+      <div class="bar {{ bar.kind }} {{ bar.ticket_type }}{{ ' pinned' if bar.pinned }}{{ ' floating' if bar.floating }}"
+           style="left: {{ bar.left }}; width: {{ bar.width }}" title="{{ bar.title }}">{% if bar.pinned %}📌{% endif %}{{ bar.label }}</div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endfor %}
+</div>
+<p class="legend">
+  <span class="key CLASSIC">CHE</span>
+  <span class="key CLASSIC_CT">CHE+CT</span>
+  <span class="key PREMIUM">PHE</span>
+  <span class="key PREMIUM_CT">PHE+CT</span>
+  <span class="key dead">dead gap (nothing fits)</span>
+  <span class="key blackout">blocked</span>
+  <span class="key floating">dashed = zone not stored yet</span>
+  📌 pinned
+</p>
+
+<p class="metrics">
+  Seat-hour use <strong>{{ percent(view.metrics.seat_hour_use) }}</strong> ·
+  Zone-hour use <strong>{{ percent(view.metrics.zone_hour_use) }}</strong>
+  {% if view.metrics.average_fill is not none %} · Average fill <strong>{{ percent(view.metrics.average_fill) }}</strong>{% endif %}
+  {% if view.metrics.dead_gap_hours is not none %} · Dead gaps <strong>{{ view.metrics.dead_gap_hours | round(1) }} h</strong>{% endif %}
+</p>
+
+<h2>Groups</h2>
+{% if lines %}
+<table class="sessions">
+  <thead>
+    <tr><th>Time</th><th>Ticket</th><th>Group</th><th>People</th><th>Zone</th><th>Pin</th></tr>
+  </thead>
+  <tbody>
+    {% for line in lines %}
+    <tr>
+      <td>{{ line.start }}–{{ line.end }}</td>
+      <td title="{{ ticket_names[line.ticket_type] }}">{{ short_names[line.ticket_type] }}</td>
+      <td><a href="/bookings/{{ line.booking_id }}">{{ line.name }}</a></td>
+      <td>{{ line.people }}</td>
+      <td>{{ line.zone }}{% if line.stored_zone is none %} <span class="detail">(suggested)</span>{% endif %}{% if line.status == "locked" %} 🔒{% endif %}</td>
+      <td>
+        {% if line.pinned %}
+        <form method="post" action="/ops/sessions/{{ line.id }}/pin" class="inline">
+          <input type="hidden" name="pinned" value="false">
+          📌 <button type="submit" class="small secondary-button">Unpin</button>
+        </form>
+        {% else %}
+        <form method="post" action="/ops/sessions/{{ line.id }}/pin" class="inline">
+          <select name="zone" aria-label="Zone for {{ line.name }}">
+            {% for zone in zones %}<option {% if zone == line.zone %}selected{% endif %}>{{ zone }}</option>{% endfor %}
+          </select>
+          <button type="submit" class="small">Pin</button>
+        </form>
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="detail">No bookings on this day.</p>
+{% endif %}
+
+<h2>Day settings</h2>
+<form method="post" action="/ops/{{ date }}/settings" class="day-settings">
+  <label class="check"><input type="checkbox" name="closed" {% if view.closed %}checked{% endif %}> Closed all day</label>
+  <label>Blocked times on every zone, one per line (e.g. 14:00-17:00)
+    <textarea name="blackouts" rows="3">{{ blackouts_input }}</textarea>
+  </label>
+  <p><button type="submit">Save day settings</button></p>
+</form>
+{% endblock %}

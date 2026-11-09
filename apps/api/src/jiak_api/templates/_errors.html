@@ -1,0 +1,8 @@
+{# Error messages, if any. Used by the board, calendar, operations and settings pages. #}
+{% if errors %}
+<div class="card errors" role="alert">
+  <ul>
+    {% for message in errors %}<li>{{ message }}</li>{% endfor %}
+  </ul>
+</div>
+{% endif %}
