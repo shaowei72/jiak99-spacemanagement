@@ -1,5 +1,11 @@
-# Zone Capacity App — Build Spec (v0.4, for Claude Code)
+# Zone Capacity App — Build Spec (v0.5, for Claude Code)
 
+> **v0.5 (2026-11-10): Outlook calendars.** Bookings live in the main calendar of the existing `hello@` mailbox.
+> That calendar ("Jiak operations") already holds today's bookings in free text and is the ground truth: the app
+> takes it over once (past entries into a separate history table, future ones checked and rewritten in place).
+> Lena's personal calendar is not used. Event bodies get a fixed layout.
+> See `DECISIONS.md` 2026-11-10 and §5.4.
+>
 > **v0.4 (2026-11-09): zone routes.** Zones are no longer identical. Each zone has its own activity, and a group
 > moves through several zones during its stay (its *route*). Ticket lengths changed, Tingkat Meals was added, and
 > large groups are now split evenly. See `DECISIONS.md` 2026-11-09.
@@ -106,7 +112,14 @@ Customer    { id, name, phone?, email?, company? }
 DaySettings { date, lockedAt?: timestamp, overrides (blackouts) }
 Settings    { turnaroundMinutes, smallGroupWarnBelow, alternativeDaySearch, availabilityCalendarDays, prices }
 AuditLog    { id, actor, action, entity, entityId, before, after, at }
+PastBooking { id, date, start (min), end (min), people?, type?, typeSource: 'subject'|'client'|'review'|null,
+              client, status: 'confirmed'|'cancelled', wasSoftBlock: boolean, sourceEventId (unique),
+              originalSubject }
 ```
+
+- A **PastBooking** is history from before the app (§5.4 "One-off migration"). It is read-only: the engine never
+  plans it, it is never written to Outlook, and no business rule is checked against it. It holds no body text,
+  phone numbers or email addresses. `type` is null when it can't be told; `typeSource` says how it was found.
 
 - A session is **one group moving through its route**. It belongs to exactly **one booking**. A booking over 25
   has one session per sub-group (§2 "Groups over 25"). `Session.headcount` = the people in that sub-group.
@@ -261,9 +274,10 @@ Each alternative carries `{ date, start, type, verdict, changeSummary, gainSumma
 
 ```
 /packages/engine      domain types, assign, dead_minutes, check_enquiry, alternatives, availability, metrics
-/packages/graph       GraphGateway protocol + real + fake implementations, subject-template parser
+/packages/graph       GraphGateway protocol + real + fake implementations, subject-template parser,
+                      reader for old-style subjects (one-off migration only)
 /apps/api             JSON routes, HTML pages (templates/, static/), persistence, migrations, sync jobs, auth,
-                      import-outlook command
+                      import-outlook command (one-off migration)
 /apps/outlook-addin   manifest + task pane shell (Milestone 5)
 pyproject.toml  uv.lock  docker-compose.yml  .env.example
 SPEC.md  CLAUDE.md  DECISIONS.md  README.md
@@ -296,14 +310,29 @@ All writes go to `AuditLog`.
 
 Tenant: Microsoft 365 for business (confirmed). Use an Entra app registration with **application** permission
 `Calendars.ReadWrite`, admin-consented, and restrict it to the mailboxes below using Exchange Online application
-access policy / RBAC for Applications. Never request tenant-wide mail access.
+access policy / RBAC for Applications. Never request tenant-wide mail access. The app touches calendars only,
+never mail.
 
 Mailboxes / calendars (addresses from env vars):
 
 | Calendar | Mailbox | Written by | Content |
 | --- | --- | --- | --- |
-| Bookings | shared mailbox `BOOKINGS_MAILBOX` | App, and Sales manually | One event per booking, Busy, covering the whole stay. Subject `PHE+CT · Tan family · 18 pax · ABDC · 11:00–14:00` (short name · customer · people · route · times). A split group lists every sub-group's route: `PHE · Lee wedding · 40 pax · ABCD/DCBA · 10:00–12:00`. Category = ticket type colour. Booking id stored in an open extension |
-| Availability | same shared mailbox, calendar "Availability" | App only | One event per start time with something sellable, next `availabilityCalendarDays` days, e.g. "10:30 · CHE, CHE+CT, PHE" |
+| Bookings | **main calendar** of the existing `hello@` mailbox (`BOOKINGS_MAILBOX`) | App, and Sales manually | One event per booking, Busy, covering the whole stay. Subject `PHE+CT · Tan family · 18 pax · ABDC · 11:00–14:00` (short name · customer · people · route · times). A split group lists every sub-group's route: `PHE · Lee wedding · 40 pax · ABCD/DCBA · 10:00–12:00`. Body in the fixed layout below. Category = ticket type colour. Booking id stored in an open extension |
+| Availability (**after Milestone 4**) | same mailbox, calendar "Availability" | App only | One event per start time with something sellable, next `availabilityCalendarDays` days, e.g. "10:30 · CHE, CHE+CT, PHE" |
+
+Staff see the Bookings calendar in their own Outlook as a shared calendar (the admin grants calendar permission
+on `hello@`; listed in `README.md`).
+
+**Event body** (written by the app; the same layout for every booking, so staff always find things in one place):
+
+```
+Booking: <id>   Ticket: Premium + Chef's Table   Status: confirmed
+Customer: Tan family   Contact: <name>, <phone / email>
+People: 18 (15 adults, 3 children)   Route: ABDC   Times: 11:00–14:00
+Notes: <free text: menu or set-meal choice, workshop item, dietary needs, tour operator>
+```
+
+Contact and notes come from the booking (`Customer`, `Booking.notes`); empty lines are left out.
 
 There are **no per-zone calendars** (no room mailboxes): zone assignments are not shown in Outlook beyond the
 route in the booking subject.
@@ -325,8 +354,37 @@ Sync rules:
     result and alternatives.
   - Unparseable → category "Needs format", email the creator with the expected format.
   - Event with our extension edited or deleted in Outlook → treat as edit / cancel (re-check edits).
-- One-off **import** command: read existing Bookings events from today to +6 months, run the parser, output a
-  CSV report of OK / Conflict / Needs format before committing (`--dry-run` default).
+- There is no hold state (§2). The one-off migration below turns existing soft blocks into confirmed bookings.
+
+**One-off migration: taking over the Bookings calendar** (`uv run import-outlook`, dry run by default). The
+`hello@` calendar ("Jiak operations") already holds the bookings, typed by hand in free text since 2026-10-08. It is
+the ground truth. Lena's personal calendar is not used.
+
+1. Read the calendar's events. Source: an `.ics` file saved from it (`--from-ics FILE`) or, once Graph is set up,
+   the calendar itself (`--from-graph`). Only booking-like events are kept: a headcount ("18 pax", "34 students +
+   4 teachers = 38 pax", "40 kids"), a ticket word (CHE, PHE, + CT, Chef Table, Tingkat, Classic, Premium) or a
+   status tag (`[Confirmed]`, `[Soft Block]`). Meetings and other items are left alone and not stored.
+2. Read each old-style entry with a forgiving reader: status tag, `Canceled:` prefix, headcount (from the subject,
+   else from the body), ticket words, client name. Known clients map to a ticket type (`Sunshine … TourGroup` →
+   `TINGKAT`); the map is a small settings file, not code. **Soft blocks count as confirmed.**
+3. Write a **review CSV** (one row per event: date, start, end, people, type, how the type was found, client,
+   status, was soft block, past/future, proposed action, original subject). Nothing is stored. The owner corrects
+   it (e.g. fills in missing headcounts).
+4. `--review FILE --commit` applies the corrected CSV:
+   - **past** events (before the migration date) → `PastBooking` rows (history);
+   - **future** events, 1–100 people → real bookings through the normal enquiry check (groups over 25 split
+     evenly). The existing Outlook event is **taken over in place**: subject and body rewritten in the new
+     format, booking id attached. No second event is created. Any that don't fit are listed for sales to sort
+     out by hand (not forced in, event left unchanged);
+   - **future events over 100 people** → not booked (too big for one start time until Phase 2). Listed, so ops
+     can block the whole venue for that time with a blackout on the Day plan page;
+   - cancelled events → history only if past, otherwise skipped;
+   - re-running is safe: an event already migrated (same Outlook event id) is skipped.
+
+**Test data**: the repo is public, so no real calendar data is ever committed (names, phone numbers, emails,
+meeting links or passcodes). Tests use anonymised events made by a committed script from the real calendar file
+(clients replaced by consistent made-up names, bodies dropped, output reviewed before commit), plus local-only
+tests that run against the real file when `JIAK_REAL_CALENDAR_ICS` points at it and are skipped otherwise.
 
 ---
 
@@ -341,12 +399,15 @@ Sync rules:
    dead zone slots, new §7 tests), database migration (`zone` → `route`), example days and scenarios, CLI boards,
    API and pages (timeline shows each group's visits across zones). Uses example days only; no real data yet.
 4. **Outlook sync** — `packages/graph` against the fake first; then real Graph behind env flag `GRAPH_MODE=real`.
-   Import command.
+   One-off take-over of the `hello@` calendar (`.ics` file first, Graph later) with the `PastBooking` history
+   table. Admin checklist in `README.md`. The Availability calendar comes after this milestone.
 5. **Outlook add-in** — task pane hosting the Enquiry check page; "Book" creates the booking via the API (which
    writes the Outlook event).
 6. **Phase 2 (only when asked)** — consolidation suggestions, day-of changes (walk-ins, late arrivals), run sheet,
    metrics dashboard. **To do:** suggest splitting a large group across start times (e.g. 60 · CHE → 30 at 10:00 +
    30 at 11:00), and bookings with more than one start time. Until then sales book each part as its own booking.
+   **To do:** groups over 100 (several start times; until then ops blocks the venue with a blackout). Analytics on
+   `PastBooking` history.
 
 ---
 
@@ -396,6 +457,7 @@ the dev machine.
 - Works on desktop, tablet and the Outlook task pane width.
 - Secrets only from env (`AZURE_TENANT_ID`, `AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET`, `BOOKINGS_MAILBOX`,
   `DATABASE_URL`, `GRAPH_MODE`). Provide `.env.example`.
+- No real customer data in the repo (it is public): see §5.4 "Test data".
 - Audit log for every booking change, with actor.
 
 ---
@@ -411,3 +473,5 @@ the dev machine.
 - Turnaround with zone routes → setting kept at default 0 (owner, 2026-11-09); revisit if the business wants a
   reset time between groups.
 - Who the M365 admin is → needed only at Milestone 4 (real Graph). Until then use the fake.
+- Availability calendar in `hello@` → deferred to after Milestone 4 (owner, 2026-11-10).
+- Migration date (the line between history and future bookings) → default: the day the migration is committed.
