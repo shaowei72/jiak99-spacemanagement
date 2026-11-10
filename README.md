@@ -25,7 +25,12 @@ routes and judges waste: [docs/ENGINE.md](docs/ENGINE.md).
 
 Done: Milestone 1 (the engine, `packages/engine`, plus a command-line tool), Milestone 2 (API + database),
 Milestone 3 (web pages: Check and book, Bookings, Day plan, 6-month calendar, settings) and Milestone 3R (the
-zone-route rules of SPEC v0.4, 2026-11-09). Next: Milestone 4, Outlook sync.
+zone-route rules of SPEC v0.4, 2026-11-09).
+
+In progress: Milestone 4, Outlook sync (SPEC v0.5, branch `m4-outlook`). Done so far: the calendar package with a
+fake calendar (part 1), app → Outlook sync on every booking change (part 2), and the take-over dry run that reads the
+existing `operations@` calendar into a review sheet (part 3). Next: applying the corrected sheet (part 4), then
+Outlook → app, then the real Microsoft Graph connection.
 
 **After pulling Milestone 3R:** run `uv run alembic upgrade head`. Stored zones can't become routes, so every
 existing group becomes unplanned (no route, not pinned) until the day is allocated again. Old example data may not
@@ -175,7 +180,49 @@ Remove-Item Env:TEST_DATABASE_URL
 `jiak_test` is a separate, empty database created when the volume is first made
 (`docker/postgres-init/`). The tests wipe it on every test, so never point `TEST_DATABASE_URL` at `jiak`.
 
+## Outlook (Milestone 4, in progress)
+
+The Bookings calendar is the main calendar of the existing `operations@` mailbox (SPEC §5.4). Every booking change
+in the app updates its event there: subject like `PHE+CT · Tan family · 18 pax · ABDC · 11:00–14:00`, a fixed body
+layout, and the ticket type as category. Cancelling deletes the event. If Outlook can't be reached the booking still
+stands and the next sync of that date catches up.
+
+Until the real connection is built, `GRAPH_MODE` stays `fake` (the default): the app writes to an in-memory stand-in
+calendar that is lost on restart, so nothing shows up in Outlook yet. `GRAPH_MODE=real` stops with "not built yet".
+
+### Taking over the existing calendar (once)
+
+The calendar already holds the bookings typed by hand since 2026-10-08. Save it as an `.ics` file **outside this
+repo** (the repo is public; `.gitignore` refuses `*.ics` and `*-review.csv` anyway), then:
+
+```
+uv run import-outlook --from-ics E:\MyLocalDev\Jiak_calendaring\raw\jiak-operations.ics --today 2026-11-10
+```
+
+This stores nothing. It writes a review sheet next to the `.ics` file (`jiak-operations-review.csv`, opens in
+Excel): one row per booking-like event with date, times, people, ticket, client, status and a proposed action
+(`book`, `fill in`, `check by hand`, `over 100`, `skip (cancelled)` or `history`), plus notes on what to look at.
+Fill in the missing headcounts and ticket types there. An existing sheet is never overwritten (it may hold your
+corrections) unless you add `--overwrite`. Clients whose entries never name a ticket type go in
+`apps/api/client-tickets.toml`. Applying the sheet (`--review FILE --commit`) comes in part 4.
+
+Test data comes from `uv run anonymise-ics REAL.ics packages/graph/tests/fixtures/operations-anon.ics`, which
+replaces client names and keeps only the headcount and product lines of the bodies. Read its output before
+committing it. To also test against the real file locally:
+`$env:JIAK_REAL_CALENDAR_ICS = "E:\MyLocalDev\Jiak_calendaring\raw\jiak-operations.ics"` before `uv run pytest`.
+
 ## What the Microsoft 365 admin will need to do
 
-Nothing yet. Needed from Milestone 4 (see `SPEC.md` §5.4): an Entra app registration with `Calendars.ReadWrite`
-application permission, restricted to the bookings shared mailbox (no zone room mailboxes are needed).
+Nothing is needed until the real Graph connection (the last part of Milestone 4). Then (see `SPEC.md` §5.4):
+
+1. **Calendar sharing:** give the staff who need it (the owner first) Editor access to the `operations@` calendar,
+   so they see it as a shared calendar in Outlook, e.g.
+   `Add-MailboxFolderPermission -Identity operations@<domain>:\Calendar -User <person> -AccessRights Editor`.
+2. **App registration** in Microsoft Entra: one app for Jiak99 with the **application** permission
+   `Calendars.ReadWrite` (Microsoft Graph), admin-consented. No mail permissions.
+3. **Limit the app to `operations@` only** with an Exchange Online application access policy or RBAC for
+   Applications, so it can't open any other mailbox. No zone room mailboxes are needed.
+4. **Send the developer** the tenant id, the app's client id and a client secret (or certificate). They go into
+   `.env` (`AZURE_TENANT_ID`, `AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET`, `BOOKINGS_MAILBOX`), never into the repo.
+5. **Keep the calendar unpublished:** don't publish `operations@`'s calendar as a public ICS link; it shows
+   customer phone numbers and emails. (Done 2026-11-10: the link was switched off.)
