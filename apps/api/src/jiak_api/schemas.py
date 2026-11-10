@@ -79,11 +79,12 @@ class PinIn(ApiModel):
     """PATCH /sessions/:id/pin body.
 
     {"route": "ABDC"} pins to that route · {} pins to the current route · {"pinned": false}
-    unpins. A route is the zone letters in visiting order; it must suit the group's ticket.
+    unpins. A route is the zone letters in visiting order; it must suit the group's ticket
+    (plan.pin_session checks that, for this API and the Day plan page alike).
     """
 
     pinned: bool = True
-    route: str | None = Field(default=None, pattern=r"^[A-Da-d]{1,4}$")
+    route: str | None = None
 
 
 class PriceIn(ApiModel):

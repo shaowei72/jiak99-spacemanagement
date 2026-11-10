@@ -151,3 +151,12 @@ def test_a_pinned_group_over_25_is_refused(
     )
     assert seed(database_url, str(day_file)) == 1
     assert "over 25" in capsys.readouterr().err
+
+
+def test_a_bad_session_in_the_day_file_is_refused(
+    database_url: str, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    day_file = tmp_path / "bad.json"
+    day_file.write_text('{"2026-12-10": [{"start": "10:00", "type": "PHE"}]}', encoding="utf-8")
+    assert seed(database_url, str(day_file)) == 1
+    assert "2026-12-10 session 1: give it 'adults' or 'children'." in capsys.readouterr().err

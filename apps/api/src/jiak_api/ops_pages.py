@@ -485,15 +485,7 @@ def ops_pin(
             request, db, now.today, errors=["That group no longer exists."], status_code=404
         )
     date = row.date
-    route = route.strip().upper()
-    if route and (len(route) > 4 or any(letter not in ZONES for letter in route)):
-        return ops_page(
-            request,
-            db,
-            date,
-            errors=["A route is the zone letters in visiting order, e.g. ABDC."],
-            status_code=422,
-        )
+    route = route.strip()  # plan.pin_session checks the route suits the group's ticket
     try:
         plan.pin_session(
             database,

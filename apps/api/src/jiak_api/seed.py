@@ -30,7 +30,7 @@ from jiak_api.bookings import split_group
 from jiak_api.config import load_config
 from jiak_api.db import Database
 from jiak_api.migrate import upgrade_to_latest
-from jiak_cli.check import DEFAULT_DAY_FILE, load_days
+from jiak_cli.check import DEFAULT_DAY_FILE, DayFileError, load_days
 
 EXAMPLES = DEFAULT_DAY_FILE.parent  # apps/cli/examples
 SEED_ACTOR = "seed"
@@ -186,7 +186,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 total = count_bookings(db)
         finally:
             database.engine.dispose()
-    except SeedError as error:
+    except (SeedError, DayFileError) as error:
         print(f"seed: {error}", file=sys.stderr)
         return 1
 

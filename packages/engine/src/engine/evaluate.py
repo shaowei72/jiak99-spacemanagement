@@ -7,6 +7,7 @@ out, however many seats are left (SPEC §2). Groups over 25 are split evenly int
 each with its own route.
 """
 
+import math
 from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Literal
@@ -39,8 +40,9 @@ from engine.text import (
 from engine.timeline import (
     Gap,
     blackout_mask,
-    dead_mask,
+    footprint,
     gaps_of,
+    plan_dead_mask,
     plan_masks,
     reset_minutes,
     slot_mask,
@@ -162,9 +164,11 @@ def validity_problem(
 def group_sizes(people: int) -> tuple[int, ...]:
     """People per sub-group: as few sub-groups as possible, sizes as equal as possible.
 
-    25 -> (25,), 26 -> (13, 13), 40 -> (20, 20), 27 -> (14, 13).
+    25 -> (25,), 26 -> (13, 13), 40 -> (20, 20), 27 -> (14, 13). No people -> no sub-groups.
     """
-    count = -(-people // ZONE_CAPACITY)  # ceil(people / 25)
+    if people <= 0:
+        return ()
+    count = math.ceil(people / ZONE_CAPACITY)  # 25 people -> 1, 26 people -> 2
     base, extra = divmod(people, count)
     return tuple(base + 1 if number < extra else base for number in range(count))
 
@@ -184,6 +188,14 @@ def new_floating_sessions(enquiry: Enquiry, sizes: Sequence[int]) -> tuple[Sessi
 
 
 # --- the evaluator ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class _Baseline:
+    """A day's best plan before anything new is booked, and its dead slots (as a mask)."""
+
+    plan: Assignment
+    dead: int
 
 
 class Evaluator:
@@ -207,13 +219,18 @@ class Evaluator:
         self.today = today
         self.now_minute = now_minute
         self.budget = budget
-        self._baselines: dict[str, Assignment] = {}
+        self._baselines: dict[str, _Baseline] = {}
 
     def day(self, date: str) -> DayState:
         return day_of(self.schedule, date)
 
-    def evaluate(self, enquiry: Enquiry) -> EnquiryResult:
-        """The verdict on `enquiry` exactly as asked, without alternatives."""
+    def evaluate(self, enquiry: Enquiry, *, explain: bool = True) -> EnquiryResult:
+        """The verdict on `enquiry` exactly as asked, without alternatives.
+
+        With `explain=False` a request that doesn't fit gets a short reason instead of a full
+        explanation, which takes longer to work out. Alternatives use this: one that doesn't
+        fit is never shown.
+        """
         day = self.day(enquiry.date)
         problem = validity_problem(
             enquiry, day, self.settings, today=self.today, now_minute=self.now_minute
@@ -221,22 +238,23 @@ class Evaluator:
         if problem is not None:
             return not_possible(problem)
 
-        before = self._baseline(day)
         sizes = group_sizes(enquiry.headcount)
         new = new_floating_sessions(enquiry, sizes)
         all_sessions = day.sessions + new
         after = assign(all_sessions, self.settings, blackouts=day.blackouts, budget=self.budget)
         if not after.ok:
-            return not_possible(_no_room_reason(day, before, enquiry, sizes, self.settings))
+            if not explain:
+                return not_possible("No room.")
+            return not_possible(_no_room_reason(day, enquiry, sizes, self.settings))
 
+        before = self._baseline(day)
         routes = tuple(after.route_of[s.id] for s in new)
-        delta = after.dead_minutes - before.dead_minutes
+        delta = after.dead_minutes - before.plan.dead_minutes
 
         drawbacks: list[str] = []
         if delta > 0:
-            new_dead = _dead_slots(day, all_sessions, after, self.settings) & ~_dead_slots(
-                day, day.sessions, before, self.settings
-            )
+            after_dead = plan_dead_mask(all_sessions, after.route_of, self.settings, day.blackouts)
+            new_dead = after_dead & ~before.dead
             drawbacks.append(f"leaves {_describe_slots(gaps_of(new_dead))} unsellable")
         warn_below = self.settings.small_group_warn_below
         small = [people for people in sizes if warn_below > 0 and people < warn_below]
@@ -262,22 +280,16 @@ class Evaluator:
         minutes_added = len(new) * TICKET_MINUTES[enquiry.ticket_type]
         return EnquiryResult(verdict, placement, delta, minutes_added, reason)
 
-    def _baseline(self, day: DayState) -> Assignment:
-        """The day's best plan before anything new is booked."""
+    def _baseline(self, day: DayState) -> _Baseline:
+        """The day's best plan before anything new is booked.
+
+        Only asked for once the request fits, so the day without it fits too.
+        """
         if day.date not in self._baselines:
-            self._baselines[day.date] = assign(
-                day.sessions, self.settings, blackouts=day.blackouts, budget=self.budget
-            )
+            plan = assign(day.sessions, self.settings, blackouts=day.blackouts, budget=self.budget)
+            dead = plan_dead_mask(day.sessions, plan.route_of, self.settings, day.blackouts)
+            self._baselines[day.date] = _Baseline(plan, dead)
         return self._baselines[day.date]
-
-
-def _dead_slots(
-    day: DayState, sessions: Sequence[Session], plan: Assignment, settings: Settings
-) -> int:
-    """The dead slots of a valid plan, as a mask."""
-    visits, resets = plan_masks(sessions, plan.route_of, settings)
-    blocked = blackout_mask(day.blackouts)
-    return dead_mask(visits, resets, blocked, reset_minutes(settings), 0, SLOTS_PER_DAY)
 
 
 # --- reason texts ----------------------------------------------------------------------------
@@ -313,33 +325,40 @@ def _zones_phrase(zones: Sequence[str]) -> str:
 
 def _no_room_reason(
     day: DayState,
-    before: Assignment,
     enquiry: Enquiry,
     sizes: Sequence[int],
     settings: Settings,
 ) -> str:
     """Explain why no plan works, in terms sales can repeat to the customer.
 
-    Looks at the day's current plan within the requested time, from the plainest reason to
-    the most general one.
+    Only what is true in every possible plan of the day counts: a group the app could still
+    move elsewhere doesn't make a slot "in use". Goes from the plainest reason to the most
+    general one.
     """
     ticket_type = enquiry.ticket_type
     start = enquiry.start
     end = start + TICKET_MINUTES[ticket_type]
     span = _span(start, end)
 
-    taken = blackout_mask(day.blackouts)
-    if before.ok:
-        visits, resets = plan_masks(day.sessions, before.route_of, settings)
-        taken |= visits | resets
-
-    def free_slots(zone_id: str) -> int:
-        return (slot_mask(zone_id, start, end) & ~taken).bit_count()
-
     # Zones every allowed zone set includes (A for Classic), and zones any of them includes.
     zone_sets = ZONE_SETS[ticket_type]
     every_set_needs = [zone for zone in ZONES if all(zone in zones for zones in zone_sets)]
     any_set_uses = [zone for zone in ZONES if any(zone in zones for zones in zone_sets)]
+
+    window = 0
+    for zone in any_set_uses:
+        window |= slot_mask(zone, start, end)
+    taken = _always_taken(day, settings, window)
+
+    def free_mask(zone_id: str) -> int:
+        """The zone's slots in the requested time that some plan keeps free."""
+        return slot_mask(zone_id, start, end) & ~taken
+
+    def free_slots(zone_id: str) -> int:
+        """At most this many of the zone's slots in the requested time can be free at once."""
+        all_slots = slot_mask(zone_id, start, end).bit_count()
+        needed = _needed_slots(day, zone_id, start, end)
+        return max(0, min(free_mask(zone_id).bit_count(), all_slots - needed))
 
     # 1. A zone every route needs is in use the whole time.
     full = [zone for zone in every_set_needs if free_slots(zone) == 0]
@@ -353,11 +372,15 @@ def _no_room_reason(
     # 3. A split group: a needed zone has room for fewer sub-groups than there are.
     if len(sizes) > 1:
         for zone in every_set_needs:
-            room = free_slots(zone) // (visit_minutes(ticket_type, zone) // GRID)
+            visit_slots = visit_minutes(ticket_type, zone) // GRID
+            room = min(
+                _room_for_visits(free_mask(zone), zone, start, end, visit_slots),
+                free_slots(zone) // visit_slots,
+            )
             if room < len(sizes):
                 return (
                     f"{_describe_split(enquiry, sizes)} needs {_split_text(sizes)}, "
-                    f"but zone {zone} has room for only {plural(room, 'group')} in "
+                    f"but Zone {zone} has room for only {plural(room, 'group')} in "
                     f"{format_time(start)}–{format_time(end)}. "
                     "Try booking part of the group at another time."
                 )
@@ -366,3 +389,67 @@ def _no_room_reason(
     return (
         f"No order of zones fits {format_time(start)}–{format_time(end)} around the other groups."
     )
+
+
+def _always_taken(day: DayState, settings: Settings, window: int) -> int:
+    """The slots in `window` that are in use in every valid plan of the day, as a mask.
+
+    Blackouts and fixed groups always count. A movable group only counts where no plan can
+    move it away: for each slot it uses in some plan, we ask for a plan that keeps that slot
+    free (with `avoid`). If there is none, the slot is always in use.
+    """
+    taken = blackout_mask(day.blackouts)
+    reset = reset_minutes(settings)
+    for session in day.sessions:
+        if session.is_fixed:
+            assert session.route is not None  # is_fixed guarantees this
+            place = footprint(session.start, session.ticket_type, session.route, reset)
+            taken |= place.visits | place.resets
+
+    plan = assign(day.sessions, settings, blackouts=day.blackouts, optimise=False)
+    if not plan.ok:
+        return taken  # the day doesn't fit as it is, so only the certain slots count
+    visits, resets = plan_masks(day.sessions, plan.route_of, settings)
+    maybe_taken = (visits | resets) & window & ~taken
+
+    for bit_number in range(len(ZONES) * SLOTS_PER_DAY):
+        slot = 1 << bit_number
+        if maybe_taken & slot == 0:
+            continue
+        keeps_it_free = assign(
+            day.sessions, settings, blackouts=day.blackouts, optimise=False, avoid=slot
+        )
+        if not keeps_it_free.ok:
+            taken |= slot
+    return taken
+
+
+def _room_for_visits(free: int, zone_id: str, start: int, end: int, visit_slots: int) -> int:
+    """How many visits of `visit_slots` slots in a row fit into the free slots of one zone.
+
+    Free, taken, free, free with 2-slot visits -> room for 1.
+    """
+    room = 0
+    run = 0  # free slots in a row so far
+    for time in range(start, end, GRID):
+        if free & slot_mask(zone_id, time, time + GRID):
+            run += 1
+        else:
+            room += run // visit_slots
+            run = 0
+    return room + run // visit_slots
+
+
+def _needed_slots(day: DayState, zone_id: str, start: int, end: int) -> int:
+    """How many of a zone's slots between `start` and `end` the day's groups use in any plan.
+
+    Counts the groups that are at the venue only within that time and must visit the zone
+    (every route of their ticket goes through it): each needs its visit there, whatever order
+    the app picks.
+    """
+    needed = 0
+    for session in day.sessions:
+        inside = start <= session.start and session.start + session.minutes <= end
+        if inside and all(zone_id in zones for zones in ZONE_SETS[session.ticket_type]):
+            needed += visit_minutes(session.ticket_type, zone_id) // GRID
+    return needed

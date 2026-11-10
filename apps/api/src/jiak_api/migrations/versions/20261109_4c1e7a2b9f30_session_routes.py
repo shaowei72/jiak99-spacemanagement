@@ -1,8 +1,9 @@
 """Sessions get a route (zone order, e.g. 'ABDC') instead of a single zone (SPEC v0.4).
 
 A stored zone can't be turned into a route (a group now visits several zones), so every session
-becomes floating again: route empty, not pinned. Ops allocates (or the next booking re-plans)
-to give them routes. Only example data existed when this was written (2026-11-09).
+becomes floating again: route empty, not pinned. Locked days are unlocked too, since a locked
+group with no route has nothing to keep. Ops allocates (and locks again), or the next booking
+re-plans, to give them routes. Only example data existed when this was written (2026-11-09).
 
 Revision ID: 4c1e7a2b9f30
 Revises: 9d6f663453df
@@ -28,6 +29,8 @@ def upgrade() -> None:
         batch.add_column(sa.Column("route", sa.String(length=4), nullable=True))
         batch.drop_column("zone_id")
     op.execute("UPDATE sessions SET pinned = false")
+    op.execute("UPDATE sessions SET status = 'open' WHERE status = 'locked'")
+    op.execute("UPDATE day_settings SET locked_at = NULL")
 
 
 def downgrade() -> None:

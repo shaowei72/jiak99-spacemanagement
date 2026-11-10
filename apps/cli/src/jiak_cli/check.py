@@ -42,7 +42,16 @@ from engine import (
     dead_gaps,
 )
 from engine.evaluate import group_sizes, new_floating_sessions
-from engine.rules import CLOSE, GRID, OPEN, TICKET_SHORT_NAMES, TICKET_TYPES, ZONES, TicketType
+from engine.rules import (
+    CLOSE,
+    GRID,
+    OPEN,
+    TICKET_SHORT_NAMES,
+    TICKET_TYPES,
+    ZONES,
+    TicketType,
+    is_valid_route,
+)
 from engine.text import format_time, plural, slot_label, ticket_label
 from engine.timeline import reset_minutes, route_visits
 
@@ -75,36 +84,62 @@ def parse_ticket_type(text: str) -> TicketType:
     raise argparse.ArgumentTypeError(f"ticket type must be one of {choices}")
 
 
+class DayFileError(ValueError):
+    """A session in a day file can't be used; the message says which one and why."""
+
+
 def load_days(path: Path) -> dict[str, DayState]:
     raw: dict[str, Any] = json.loads(path.read_text(encoding="utf-8"))
     return {date: parse_day(date, value) for date, value in raw.items() if not date.startswith("_")}
 
 
 def parse_day(date: str, value: list[dict[str, Any]] | dict[str, Any]) -> DayState:
-    """One date from a day file: a list of sessions, or {"sessions", "closed", "blackouts"}."""
+    """One date from a day file: a list of sessions, or {"sessions", "closed", "blackouts"}.
+
+    Raises DayFileError for a session without people or with a route its ticket can't take.
+    """
     details: dict[str, Any] = {"sessions": value} if isinstance(value, list) else value
-    sessions = tuple(
-        Session(
+    sessions: list[Session] = []
+    for number, entry in enumerate(details.get("sessions", []), start=1):
+        session = Session(
             id=f"{date}#{number}",
             date=date,
             start=parse_time(entry["start"]),
             ticket_type=parse_ticket_type(entry["type"]),
             adults=int(entry.get("adults", 0)),
             children=int(entry.get("children", 0)),
-            route=entry.get("route"),
+            route=parse_route(entry.get("route")),
             pinned=bool(entry.get("pinned", False)),
         )
-        for number, entry in enumerate(details.get("sessions", []), start=1)
-    )
+        if session.headcount < 1:
+            raise DayFileError(f"{date} session {number}: give it 'adults' or 'children'.")
+        if session.route is not None and not is_valid_route(session.ticket_type, session.route):
+            short_name = TICKET_SHORT_NAMES[session.ticket_type]
+            raise DayFileError(
+                f"{date} session {number}: {session.route} is not a route "
+                f"a {short_name} group can take."
+            )
+        sessions.append(session)
     blackouts = tuple(
         Blackout(parse_time(b["start"]), parse_time(b["end"])) for b in details.get("blackouts", [])
     )
     return DayState(
         date=date,
-        sessions=sessions,
+        sessions=tuple(sessions),
         closed=bool(details.get("closed", False)),
         blackouts=blackouts,
     )
+
+
+def parse_route(text: str | None) -> str | None:
+    """A route as typed in a day file -> zone letters in capitals ('abdc' -> 'ABDC').
+
+    No route (or an empty one) -> None: the session is floating.
+    """
+    if text is None:
+        return None
+    route = str(text).strip().upper()
+    return route or None
 
 
 def format_result(enquiry: Enquiry, result: EnquiryResult) -> str:
@@ -244,7 +279,11 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8")  # the messages use "·" and "–"
-    days = {} if args.empty_day else load_days(args.day)
+    try:
+        days = {} if args.empty_day else load_days(args.day)
+    except DayFileError as error:
+        print(f"check: {error}", file=sys.stderr)
+        return 1
     settings = Settings(turnaround_minutes=args.turnaround, small_group_warn_below=args.warn_below)
     today = args.today or datetime.now(SINGAPORE).date().isoformat()
     enquiry = Enquiry(args.date, args.start, args.type, args.adults, args.children)

@@ -188,9 +188,12 @@ def test_pin_mistakes(client: TestClient) -> None:
     assert client.post("/ops/sessions/nope/pin", data={"route": "ABCD"}).status_code == 404
     booking = book(client, "09:00", "PREMIUM", 18, "Tan family")
     url = f"/ops/sessions/{booking['sessions'][0]['id']}/pin"
-    response = client.post(url, data={"route": "ABCE"})
-    assert response.status_code == 422
-    assert "zone letters in visiting order" in response.text
+    response = client.post(url, data={"route": "abce"})  # no zone E
+    assert response.status_code == 409
+    assert "ABCE is not a route a PHE group can take" in response.text
+    response = client.post(url, data={"route": "ABCDABCD"})  # too long for the database
+    assert response.status_code == 409
+    assert "ABCDABCD is not a route a PHE group can take" in response.text
     response = client.post(url, data={"route": "AB"})  # a Classic route
     assert response.status_code == 409
     assert "not a route a PHE group can take" in response.text

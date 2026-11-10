@@ -62,7 +62,7 @@ def find_alternatives(
     better: list[tuple[_Candidate, EnquiryResult]] = []
 
     for candidate in _same_day_candidates(enquiry):
-        result = evaluator.evaluate(candidate.as_enquiry(enquiry))
+        result = evaluator.evaluate(candidate.as_enquiry(enquiry), explain=False)
         if _quality(result) < own_quality:
             better.append((candidate, result))
 
@@ -125,7 +125,7 @@ def _nearest_better_day(
                 day_offset=offset,
             )
             # Days outside the booking window or in the past come back NOT_POSSIBLE.
-            result = evaluator.evaluate(candidate.as_enquiry(enquiry))
+            result = evaluator.evaluate(candidate.as_enquiry(enquiry), explain=False)
             if _quality(result) < own_quality:
                 return candidate, result
     return None

@@ -96,11 +96,13 @@ Take "10:00 · PHE · 10":
 
 1. **Validity:** is the start on the grid, does it end by 21:00, is the date in the booking window, and is the time
    clear of blackouts and closed days?
-2. **Before:** the best plan for the day as it is, giving dead slots *before*.
-3. **After:** add the new group (split evenly if over 25, e.g. 40 → 20 + 20) as groups with no fixed route yet, and
-   plan again.
-   - **Not possible:** no plan exists. The reason is built from the current plan, e.g. "Zone A is in use
-     10:00–11:00."
+2. **After:** add the new group (split evenly if over 25, e.g. 40 → 20 + 20) as groups with no fixed route yet, and
+   plan the day.
+   - **Not possible:** no plan exists. The reason only says what is true in *every* plan of the day, e.g.
+     "Zone A is in use 10:00–11:00." A slot counts as in use only if no plan can keep it free, so a group the
+     app could move elsewhere is never blamed. (The engine asks for a plan that keeps that one slot free; if
+     there is none, the slot is in use.)
+3. **Before** (only when it fits): the best plan for the day as it is, giving dead slots *before*.
    - **Good:** dead slots after = before.
    - **Costly:** dead slots went up. The reason lists the new dead cells, e.g. "leaves B 20:00–20:30 and
      C 20:30–21:00 unsellable."

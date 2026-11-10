@@ -87,11 +87,11 @@
 
     {"id": "S21", "title": "Big groups: 26 people need 2 groups at 10:00, room for only 1",
      "enquiry": {"date": "2026-12-06", "start": "10:00", "type": "PREMIUM", "adults": 26},
-     "expect": {"verdict": "NOT_POSSIBLE", "reason_contains": "zone A has room for only 1 group in 10:00–12:00", "first_alternative": "2026-12-07 10:00 PREMIUM"}},
+     "expect": {"verdict": "NOT_POSSIBLE", "reason_contains": "Zone A has room for only 1 group in 10:00–12:00", "first_alternative": "2026-12-07 10:00 PREMIUM"}},
 
     {"id": "S22", "title": "Big groups: 75 Classic people need 3 groups, zone A holds only 2 per hour",
      "enquiry": {"date": "2026-12-06", "start": "09:00", "type": "CLASSIC", "adults": 75},
-     "expect": {"verdict": "NOT_POSSIBLE", "reason_contains": "zone A has room for only 2 groups in 09:00–10:00"}},
+     "expect": {"verdict": "NOT_POSSIBLE", "reason_contains": "Zone A has room for only 2 groups in 09:00–10:00"}},
 
     {"id": "S23", "title": "Big groups: 40 at 13:00 split 20 + 20 around the 14:00 Classic group",
      "enquiry": {"date": "2026-12-06", "start": "13:00", "type": "PREMIUM", "adults": 40},
@@ -111,7 +111,7 @@
 
     {"id": "S27", "title": "Group of 60 needs 3 groups at 12:00; zone A has room for only 2",
      "enquiry": {"date": "2026-12-01", "start": "12:00", "type": "PREMIUM", "adults": 60},
-     "expect": {"verdict": "NOT_POSSIBLE", "reason_contains": "zone A has room for only 2 groups in 12:00–14:00"}},
+     "expect": {"verdict": "NOT_POSSIBLE", "reason_contains": "Zone A has room for only 2 groups in 12:00–14:00"}},
 
     {"id": "S28", "title": "Upgrade offered: a Classic strands B and C at the end of the day; Premium fills them",
      "enquiry": {"date": "2026-12-04", "start": "19:00", "type": "CLASSIC", "adults": 8},

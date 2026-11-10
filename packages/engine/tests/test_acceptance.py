@@ -203,7 +203,7 @@ def test_t13_three_classic_groups_cannot_share_zone_a() -> None:
     result = check_enquiry(schedule(), DEFAULTS, enquiry("10:00", "CLASSIC", 60), today=TODAY)
 
     assert result.verdict == "NOT_POSSIBLE"
-    assert "zone A has room for only 2 groups" in result.reason
+    assert "Zone A has room for only 2 groups" in result.reason
     assert "Try booking part of the group at another time." in result.reason
     # An upgrade is offered; which one comes first is not fixed (SPEC §7 T13).
     upgrades = {a.ticket_type for a in result.alternatives if a.verdict == "ACCEPT_GOOD"}

@@ -149,13 +149,13 @@ Labels: Tingkat, CHE = Classic, CHE+CT = Classic + Chef's Table, PHE = Premium, 
 | S18 | Sat 12-05 | 13:00 PHE, 11 | Sold out: nearest day offered | NOT POSSIBLE | first option: Sun 13:00 PHE |
 | S19 | Sat 12-05 | 15:00 CHE+CT, 5 | Sold out: nearest day, not a switch to Classic | NOT POSSIBLE | first option: Sun 15:00 CHE+CT |
 | S20 | Sun 12-06 | 10:00 PHE, 15 | Takes the last free slot in every zone 10:00–12:00 | GOOD | one group |
-| S21 | Sun 12-06 | 10:00 PHE, 26 | Needs 2 groups, room for 1 | NOT POSSIBLE | "zone A has room for only 1 group in 10:00–12:00"; first option: Mon 10:00 PHE |
-| S22 | Sun 12-06 | 09:00 CHE, 75 | 3 groups need A within one hour; A holds 2 | NOT POSSIBLE | "zone A has room for only 2 groups in 09:00–10:00" |
+| S21 | Sun 12-06 | 10:00 PHE, 26 | Needs 2 groups, room for 1 | NOT POSSIBLE | "Zone A has room for only 1 group in 10:00–12:00"; first option: Mon 10:00 PHE |
+| S22 | Sun 12-06 | 09:00 CHE, 75 | 3 groups need A within one hour; A holds 2 | NOT POSSIBLE | "Zone A has room for only 2 groups in 09:00–10:00" |
 | S23 | Sun 12-06 | 13:00 PHE, 40 | Split around the 14:00 Classic group | GOOD | "split into 2 groups (20 + 20)" |
 | S24 | Mon 12-07 | 13:00 PHE, 10 | Runs into the private event | NOT POSSIBLE | "14:00–17:00 blackout"; first option: 12:00 PHE |
 | S25 | Mon 12-07 | 17:00 CHE+CT, 6 | Right after the private event | GOOD | one group |
 | S26 | Tue 12-08 | 12:00 PHE, 10 | Closed day | NOT POSSIBLE | "closed"; first option: Wed 12-09 12:00 PHE |
-| S27 | Tue 12-01 | 12:00 PHE, 60 | 3 groups, zone A has room for 2 | NOT POSSIBLE | "zone A has room for only 2 groups in 12:00–14:00" |
+| S27 | Tue 12-01 | 12:00 PHE, 60 | 3 groups, zone A has room for 2 | NOT POSSIBLE | "Zone A has room for only 2 groups in 12:00–14:00" |
 | S28 | Fri 12-04 | 19:00 CHE, 8 | Classic strands B and C at the end of the day; upgrade fills them | COSTLY | "B 20:00–20:30 and C 20:30–21:00"; first option: 19:00 PHE |
 | S29 | Fri 12-04 | 19:00 CHE+CT, 8 | PHE would fill the evening but drops the Chef's Table: not offered | COSTLY | "C 20:30–21:00"; first option: Thu 19:00 CHE+CT; options exclude 19:00 PHE |
 | S30 | Wed 12-02 | 13:00 Tingkat, 4 | B, C and D full; other times offered, never another ticket in its place | NOT POSSIBLE | "Zones B, C and D are in use at 13:00"; first option: 14:00 Tingkat |

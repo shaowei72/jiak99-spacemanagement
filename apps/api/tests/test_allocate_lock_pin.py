@@ -252,7 +252,9 @@ def test_pin_needs_operations_a_real_session_and_a_real_route(client: TestClient
     session_id = book(client)
     url = f"/api/sessions/{session_id}/pin"
     assert client.patch(url, json={"route": "ABCD"}, headers=SALES).status_code == 403
-    assert client.patch(url, json={"route": "ABCE"}).status_code == 422  # no zone E
+    response = client.patch(url, json={"route": "ABCE"})  # no zone E
+    assert response.status_code == 409
+    assert response.json()["detail"] == "ABCE is not a route a PHE group can take."
     response = client.patch(url, json={"route": "AB"})  # a Classic route, not a Premium one
     assert response.status_code == 409
     assert response.json()["detail"] == "AB is not a route a PHE group can take."

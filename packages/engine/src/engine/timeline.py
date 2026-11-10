@@ -254,6 +254,18 @@ def gaps_of(mask: int) -> list[Gap]:
     return gaps
 
 
+def plan_dead_mask(
+    sessions: Iterable[Session],
+    route_of: Mapping[str, str],
+    settings: Settings,
+    blackouts: Iterable[Blackout] = (),
+) -> int:
+    """Dead slots over all zones for a given plan (session id -> route), as a mask."""
+    visits, resets = plan_masks(sessions, route_of, settings)
+    blocked = blackout_mask(blackouts)
+    return dead_mask(visits, resets, blocked, reset_minutes(settings), 0, SLOTS_PER_DAY)
+
+
 def dead_gaps(
     sessions: Iterable[Session],
     route_of: Mapping[str, str],
@@ -261,8 +273,4 @@ def dead_gaps(
     blackouts: Iterable[Blackout] = (),
 ) -> list[Gap]:
     """Dead slots over all zones for a given plan (session id -> route), as runs per zone."""
-    sessions = list(sessions)
-    visits, resets = plan_masks(sessions, route_of, settings)
-    blocked = blackout_mask(blackouts)
-    dead = dead_mask(visits, resets, blocked, reset_minutes(settings), 0, SLOTS_PER_DAY)
-    return gaps_of(dead)
+    return gaps_of(plan_dead_mask(sessions, route_of, settings, blackouts))

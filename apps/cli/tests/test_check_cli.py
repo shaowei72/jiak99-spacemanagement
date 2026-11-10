@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from jiak_cli.check import ZONE_COLUMN_WIDTH, main, parse_ticket_type
+from jiak_cli.check import ZONE_COLUMN_WIDTH, load_days, main, parse_ticket_type
 
 EXAMPLE = Path(__file__).parent.parent / "examples" / "busy-day.json"
 
@@ -172,3 +172,35 @@ def test_short_labels_are_read_as_codes(text: str, code: str) -> None:
 def test_unknown_ticket_type_lists_the_labels() -> None:
     with pytest.raises(argparse.ArgumentTypeError, match=r"Tingkat, CHE, CHE\+CT, PHE, PHE\+CT"):
         parse_ticket_type("XHE")
+
+
+def test_day_file_routes_are_read_in_capitals(tmp_path: Path) -> None:
+    day_file = tmp_path / "days.json"
+    day_file.write_text(
+        '{"2026-12-01": [{"start": "10:00", "type": "PHE", "adults": 4, "route": " abdc ",'
+        ' "pinned": true}, {"start": "11:00", "type": "CHE", "adults": 4, "route": ""}]}',
+        encoding="utf-8",
+    )
+    first, second = load_days(day_file)["2026-12-01"].sessions
+    assert (first.route, second.route) == ("ABDC", None)
+
+
+@pytest.mark.parametrize(
+    ("session", "message"),
+    [
+        (
+            '{"start": "10:00", "type": "PHE", "adults": 4, "route": "AB"}',
+            "AB is not a route a PHE",
+        ),
+        ('{"start": "10:00", "type": "PHE", "adults": 4, "route": "ABCE"}', "ABCE is not a route"),
+        ('{"start": "10:00", "type": "PHE"}', "session 1: give it 'adults' or 'children'"),
+    ],
+)
+def test_cli_refuses_a_bad_session_in_the_day_file(
+    session: str, message: str, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    day_file = tmp_path / "days.json"
+    day_file.write_text(f'{{"2026-12-01": [{session}]}}', encoding="utf-8")
+    exit_code = main(["2026-12-01", "15:00", "CLASSIC", "4", "--day", str(day_file)])
+    assert exit_code == 1
+    assert message in capsys.readouterr().err

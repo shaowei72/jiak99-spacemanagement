@@ -1,5 +1,7 @@
 """Enquiry-check rules beyond the acceptance tests: validity, zone slots, splits, warnings."""
 
+from dataclasses import replace
+
 import pytest
 
 from engine import (
@@ -19,6 +21,7 @@ from engine import (
 )
 from engine.alternatives import _Candidate, _rank
 from engine.evaluate import group_sizes
+from engine.model import SessionStatus
 from engine.rules import TICKET_TYPES, TicketType, is_downgrade
 from engine_helpers import DEFAULTS, TODAY, enquiry, pinned, schedule, session, t
 
@@ -58,6 +61,16 @@ def test_session_pinned_to_an_invalid_route_makes_day_infeasible(
     ticket_type: TicketType, route: str
 ) -> None:
     assert not assign([pinned("10:00", ticket_type, route)], DEFAULTS).ok
+
+
+@pytest.mark.parametrize("status", ["open", "locked", "in_progress"])
+def test_fixed_groups_must_stay_out_of_blackouts(status: SessionStatus) -> None:
+    """A blackout added after booking must not cover a pinned or locked group either."""
+    group = replace(pinned("09:00", "PREMIUM", "ABCD"), status=status)
+    morning_off = [Blackout(t("09:00"), t("10:00"))]
+    assert not assign([group], DEFAULTS, blackouts=morning_off).ok
+    afternoon_off = [Blackout(t("14:00"), t("15:00"))]
+    assert assign([group], DEFAULTS, blackouts=afternoon_off).ok
 
 
 def test_past_date_and_past_time() -> None:
@@ -139,6 +152,7 @@ def test_a_group_never_shares_a_zone_slot(ticket_type: TicketType) -> None:
 @pytest.mark.parametrize(
     ("people", "sizes"),
     [
+        (0, ()),
         (1, (1,)),
         (25, (25,)),
         (26, (13, 13)),
@@ -177,7 +191,7 @@ def test_split_group_short_of_a_needed_zone() -> None:
     reason = check(schedule(), enquiry("10:00", "CLASSIC", 60))
     assert reason == (
         "Group of 60 at 10:00 · CHE needs 3 groups (20 + 20 + 20), "
-        "but zone A has room for only 2 groups in 10:00–11:00. "
+        "but Zone A has room for only 2 groups in 10:00–11:00. "
         "Try booking part of the group at another time."
     )
 
@@ -192,6 +206,53 @@ def test_no_route_fits_although_no_zone_is_full() -> None:
     )
     assert check(day, enquiry("10:00", "CLASSIC", 4)) == (
         "No order of zones fits 10:00–11:00 around the other groups."
+    )
+
+
+def test_groups_that_could_move_are_not_blamed() -> None:
+    """The current plan puts both groups in A at 09:30 and 10:00, but the CHE+CT group could
+    visit A at 10:30 instead. So A is not "in use 09:30–10:30"; only the CHE group must be in
+    A then, which leaves room for one more group, not two."""
+    day = schedule(session("09:30", "CLASSIC", 10), session("09:30", "CLASSIC_CT", 10))
+    assert check(day, enquiry("09:30", "CLASSIC", 40)) == (
+        "Group of 40 at 09:30 · CHE needs 2 groups (20 + 20), "
+        "but Zone A has room for only 1 group in 09:30–10:30. "
+        "Try booking part of the group at another time."
+    )
+
+
+def test_groups_that_must_visit_a_zone_use_its_room() -> None:
+    """Three PHE groups at 10:00 each visit A once between 10:00 and 12:00, in some order. No
+    single A slot is taken in every plan, yet only one of the four can be free."""
+    day = schedule(*(session("10:00", "PREMIUM", 20) for _ in range(3)))
+    assert check(day, enquiry("10:00", "PREMIUM", 26)) == (
+        "Group of 26 at 10:00 · PHE needs 2 groups (13 + 13), "
+        "but Zone A has room for only 1 group in 10:00–12:00. "
+        "Try booking part of the group at another time."
+    )
+
+
+def test_room_for_a_split_group_needs_free_slots_in_a_row() -> None:
+    """A PHE+CT spends 60 min in B. B is free 10:00–11:30 and at 12:00, but taken at 11:30 and
+    12:30: 4 free slots, yet only one 60-min visit fits."""
+    day = schedule(pinned("11:30", "TINGKAT", "B"), pinned("12:30", "TINGKAT", "B"))
+    assert check(day, enquiry("10:00", "PREMIUM_CT", 40)) == (
+        "Group of 40 at 10:00 · PHE+CT needs 2 groups (20 + 20), "
+        "but Zone B has room for only 1 group in 10:00–13:00. "
+        "Try booking part of the group at another time."
+    )
+
+
+def test_reason_on_a_day_that_does_not_fit_as_it_is() -> None:
+    """A pinned group under a blackout (stored before blackouts were checked) breaks the day.
+    The reason then only counts the certain slots: the blackout and the fixed groups."""
+    day = DayState(
+        TODAY,
+        sessions=(pinned("09:00", "PREMIUM", "ABCD"),),
+        blackouts=(Blackout(t("09:00"), t("09:30")),),
+    )
+    assert check({TODAY: day}, enquiry("12:00", "CLASSIC", 4)) == (
+        "No order of zones fits 12:00–13:00 around the other groups."
     )
 
 

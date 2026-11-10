@@ -74,10 +74,13 @@ def assign(
     blackouts: Iterable[Blackout] = (),
     budget: SearchBudget | None = None,
     optimise: bool = True,
+    avoid: int = 0,
 ) -> Assignment:
     """Find routes for all sessions of one day.
 
     With `optimise=False` the first valid plan is returned (enough to answer "does it fit?").
+    `avoid` is a mask of zone slots that must stay completely free (no visit, no reset time).
+    It lets us ask "is there a plan that keeps this slot free?".
     """
     reset = reset_minutes(settings)
     blocked = blackout_mask(blackouts)
@@ -94,9 +97,8 @@ def assign(
             if not is_valid_route(session.ticket_type, session.route):
                 return INFEASIBLE
             place = footprint(session.start, session.ticket_type, session.route, reset)
-            # Fixed groups were checked against blackouts when they were booked, so only
-            # clashes between groups make the day impossible.
-            if not fits(place, visits, visits | resets):
+            # Blackouts can be added after a group was booked, so check them here too.
+            if not fits(place, visits, visits | resets | blocked) or _touches(place, avoid):
                 return INFEASIBLE
             visits |= place.visits
             resets |= place.resets
@@ -104,7 +106,7 @@ def assign(
         else:
             floating.append(session)
 
-    search = _Search(floating, visits, resets, blocked, reset, budget, optimise)
+    search = _Search(floating, visits, resets, blocked, avoid, reset, budget, optimise)
     result = search.run()
     if result is None:
         return INFEASIBLE
@@ -143,6 +145,7 @@ class _Search:
         visits: int,
         resets: int,
         blocked: int,
+        avoid: int,
         reset: int,
         budget: SearchBudget | None,
         optimise: bool,
@@ -151,13 +154,7 @@ class _Search:
         self.floating = sorted(
             floating, key=lambda s: (s.start, -TICKET_MINUTES[s.ticket_type], s.id)
         )
-        self.options: list[list[tuple[str, Footprint]]] = [
-            [
-                (route, footprint(s.start, s.ticket_type, route, reset))
-                for route in ROUTES[s.ticket_type]
-            ]
-            for s in self.floating
-        ]
+        self.options = [_route_options(s, reset, avoid) for s in self.floating]
         self.start_state: _State = (visits, resets)
         self.blocked = blocked
         self.reset = reset
@@ -328,3 +325,21 @@ def _key(step: int, state: _State, keep: int) -> _Key:
     """The memory key for a state: only the slots in `keep` are remembered."""
     visits, resets = state
     return (step, visits & keep, resets & keep)
+
+
+def _touches(place: Footprint, avoid: int) -> bool:
+    """True if a route visits or resets any slot in `avoid`."""
+    return (place.visits | place.resets) & avoid != 0
+
+
+def _route_options(session: Session, reset: int, avoid: int) -> list[tuple[str, Footprint]]:
+    """The routes a floating session may take, with the slots each one takes.
+
+    Routes that touch a slot in `avoid` are left out.
+    """
+    options: list[tuple[str, Footprint]] = []
+    for route in ROUTES[session.ticket_type]:
+        place = footprint(session.start, session.ticket_type, route, reset)
+        if not _touches(place, avoid):
+            options.append((route, place))
+    return options

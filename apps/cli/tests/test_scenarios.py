@@ -34,3 +34,15 @@ def test_runner_reports_a_wrong_expectation(
 
     assert main(["--file", str(wrong), "--verbose"]) == 1
     assert "verdict ACCEPT_GOOD, expected NOT_POSSIBLE" in capsys.readouterr().out
+
+
+def test_runner_reports_a_bad_day_file(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    day_file = tmp_path / "days.json"
+    day_file.write_text('{"2026-12-01": [{"start": "10:00", "type": "PHE"}]}', encoding="utf-8")
+    spec_file = tmp_path / "scenarios.json"
+    spec_file.write_text(
+        json.dumps({"days": str(day_file), "today": "2026-12-01", "scenarios": []}),
+        encoding="utf-8",
+    )
+    assert main(["--file", str(spec_file)]) == 1
+    assert "give it 'adults' or 'children'" in capsys.readouterr().err
