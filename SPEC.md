@@ -1,7 +1,7 @@
 # Zone Capacity App — Build Spec (v0.5, for Claude Code)
 
-> **v0.5 (2026-11-10): Outlook calendars.** Bookings live in the main calendar of the existing `hello@` mailbox.
-> That calendar ("Jiak operations") already holds today's bookings in free text and is the ground truth: the app
+> **v0.5 (2026-11-10): Outlook calendars.** Bookings live in the main calendar of the existing `operations@` mailbox.
+> That calendar already holds today's bookings in free text and is the ground truth: the app
 > takes it over once (past entries into a separate history table, future ones checked and rewritten in place).
 > Lena's personal calendar is not used. Event bodies get a fixed layout.
 > See `DECISIONS.md` 2026-11-10 and §5.4.
@@ -317,11 +317,11 @@ Mailboxes / calendars (addresses from env vars):
 
 | Calendar | Mailbox | Written by | Content |
 | --- | --- | --- | --- |
-| Bookings | **main calendar** of the existing `hello@` mailbox (`BOOKINGS_MAILBOX`) | App, and Sales manually | One event per booking, Busy, covering the whole stay. Subject `PHE+CT · Tan family · 18 pax · ABDC · 11:00–14:00` (short name · customer · people · route · times). A split group lists every sub-group's route: `PHE · Lee wedding · 40 pax · ABCD/DCBA · 10:00–12:00`. Body in the fixed layout below. Category = ticket type colour. Booking id stored in an open extension |
+| Bookings | **main calendar** of the existing `operations@` mailbox (`BOOKINGS_MAILBOX`) | App, and Sales manually | One event per booking, Busy, covering the whole stay. Subject `PHE+CT · Tan family · 18 pax · ABDC · 11:00–14:00` (short name · customer · people · route · times). A split group lists every sub-group's route: `PHE · Lee wedding · 40 pax · ABCD/DCBA · 10:00–12:00`. Body in the fixed layout below. Category = ticket type colour. Booking id stored in an open extension |
 | Availability (**after Milestone 4**) | same mailbox, calendar "Availability" | App only | One event per start time with something sellable, next `availabilityCalendarDays` days, e.g. "10:30 · CHE, CHE+CT, PHE" |
 
 Staff see the Bookings calendar in their own Outlook as a shared calendar (the admin grants calendar permission
-on `hello@`; listed in `README.md`).
+on `operations@`; listed in `README.md`).
 
 **Event body** (written by the app; the same layout for every booking, so staff always find things in one place):
 
@@ -357,7 +357,7 @@ Sync rules:
 - There is no hold state (§2). The one-off migration below turns existing soft blocks into confirmed bookings.
 
 **One-off migration: taking over the Bookings calendar** (`uv run import-outlook`, dry run by default). The
-`hello@` calendar ("Jiak operations") already holds the bookings, typed by hand in free text since 2026-10-08. It is
+main calendar of `operations@` already holds the bookings, typed by hand in free text since 2026-10-08. It is
 the ground truth. Lena's personal calendar is not used.
 
 1. Read the calendar's events. Source: an `.ics` file saved from it (`--from-ics FILE`) or, once Graph is set up,
@@ -399,7 +399,7 @@ tests that run against the real file when `JIAK_REAL_CALENDAR_ICS` points at it 
    dead zone slots, new §7 tests), database migration (`zone` → `route`), example days and scenarios, CLI boards,
    API and pages (timeline shows each group's visits across zones). Uses example days only; no real data yet.
 4. **Outlook sync** — `packages/graph` against the fake first; then real Graph behind env flag `GRAPH_MODE=real`.
-   One-off take-over of the `hello@` calendar (`.ics` file first, Graph later) with the `PastBooking` history
+   One-off take-over of the `operations@` calendar (`.ics` file first, Graph later) with the `PastBooking` history
    table. Admin checklist in `README.md`. The Availability calendar comes after this milestone.
 5. **Outlook add-in** — task pane hosting the Enquiry check page; "Book" creates the booking via the API (which
    writes the Outlook event).
@@ -457,7 +457,8 @@ the dev machine.
 - Works on desktop, tablet and the Outlook task pane width.
 - Secrets only from env (`AZURE_TENANT_ID`, `AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET`, `BOOKINGS_MAILBOX`,
   `DATABASE_URL`, `GRAPH_MODE`). Provide `.env.example`.
-- No real customer data in the repo (it is public): see §5.4 "Test data".
+- No real customer data in the repo (it is public): see §5.4 "Test data". The full mailbox address lives only in
+  `.env` (`BOOKINGS_MAILBOX`); docs say `operations@`.
 - Audit log for every booking change, with actor.
 
 ---
@@ -473,5 +474,5 @@ the dev machine.
 - Turnaround with zone routes → setting kept at default 0 (owner, 2026-11-09); revisit if the business wants a
   reset time between groups.
 - Who the M365 admin is → needed only at Milestone 4 (real Graph). Until then use the fake.
-- Availability calendar in `hello@` → deferred to after Milestone 4 (owner, 2026-11-10).
+- Availability calendar in `operations@` → deferred to after Milestone 4 (owner, 2026-11-10).
 - Migration date (the line between history and future bookings) → default: the day the migration is committed.
