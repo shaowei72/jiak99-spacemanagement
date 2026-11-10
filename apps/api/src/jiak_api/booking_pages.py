@@ -21,6 +21,7 @@ from jiak_api import bookings, models
 from jiak_api.auth import User
 from jiak_api.clock import Now
 from jiak_api.ops_pages import page
+from jiak_api.outlook_sync import OutlookDep
 from jiak_api.pages import booking_view, form_errors, people, ticket_choices
 from jiak_api.routes import (
     AnyUser,
@@ -204,6 +205,7 @@ def save_booking_edit(
     db: DbDep,
     now: NowDep,
     user: SalesUser,
+    outlook: OutlookDep,
     date: Annotated[str, Form()] = "",
     start: Annotated[str, Form()] = "",
     type: Annotated[str, Form()] = "",
@@ -255,7 +257,7 @@ def save_booking_edit(
         ),
     )
     try:
-        bookings.edit_booking(database, db, booking_id, changes, actor=user.name, now=now)
+        edited = bookings.edit_booking(database, db, booking_id, changes, actor=user.name, now=now)
     except bookings.NoLongerFits as error:
         db.rollback()
         check = CheckOut.from_engine(error.result)
@@ -263,6 +265,7 @@ def save_booking_edit(
     except bookings.BookingNotChangeable as error:
         db.rollback()
         return edit_page(request, booking, form, errors=[str(error)], status_code=409)
+    outlook.dates_changed(edited.date)
     return RedirectResponse(f"/bookings/{booking_id}?done=changed", status_code=303)
 
 
@@ -287,15 +290,17 @@ def cancel_booking(
     db: DbDep,
     now: NowDep,
     user: SalesUser,
+    outlook: OutlookDep,
 ) -> Response:
     """Cancel the booking; its zone slots become free again."""
     try:
-        bookings.cancel_booking(database, db, booking_id, actor=user.name)
+        cancelled = bookings.cancel_booking(database, db, booking_id, actor=user.name)
     except bookings.BookingNotFound:
         return not_found(request)
     except bookings.BookingNotChangeable as error:
         db.rollback()
         return refused(request, db, now, user, booking_id, str(error))
+    outlook.dates_changed(cancelled.date)
     return RedirectResponse(f"/bookings/{booking_id}?done=cancelled", status_code=303)
 
 
@@ -307,15 +312,17 @@ def no_show(
     db: DbDep,
     now: NowDep,
     user: OperationsUser,
+    outlook: OutlookDep,
 ) -> Response:
     """The group didn't come (only after the start time). Its zone slots become free again."""
     try:
-        bookings.mark_no_show(database, db, booking_id, actor=user.name, now=now)
+        no_show_booking = bookings.mark_no_show(database, db, booking_id, actor=user.name, now=now)
     except bookings.BookingNotFound:
         return not_found(request)
     except bookings.BookingNotChangeable as error:
         db.rollback()
         return refused(request, db, now, user, booking_id, str(error))
+    outlook.dates_changed(no_show_booking.date)
     return RedirectResponse(f"/bookings/{booking_id}?done=no_show", status_code=303)
 
 

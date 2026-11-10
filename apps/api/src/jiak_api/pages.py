@@ -23,6 +23,7 @@ from engine.text import duration_label, format_time
 from jiak_api import bookings, models, overview
 from jiak_api.auth import User
 from jiak_api.clock import Now
+from jiak_api.outlook_sync import OutlookDep
 from jiak_api.routes import AnyUser, DatabaseDep, DbDep, NowDep, SalesUser, to_enquiry
 from jiak_api.schemas import BookingOut, CheckOut, EnquiryIn
 
@@ -290,6 +291,7 @@ def book(
     db: DbDep,
     now: NowDep,
     user: SalesUser,
+    outlook: OutlookDep,
     date: Annotated[str, Form()] = "",
     start: Annotated[str, Form()] = "",
     type: Annotated[str, Form()] = "",
@@ -347,6 +349,7 @@ def book(
         check = CheckOut.from_engine(error.result)
         context = {"form": form, "check": check, "no_longer_fits": True}
         return render(request, "_check_result.html", context, status_code=409)
+    outlook.dates_changed(booking.date)
 
     booking_url = f"/bookings/{booking.id}"
     if not is_htmx(request):
