@@ -19,6 +19,8 @@ dependencies = [
 
 [project.scripts]
 seed = "jiak_api.seed:main"
+import-outlook = "jiak_api.import_outlook:main"
+anonymise-ics = "jiak_api.anonymise_ics:main"
 
 [tool.uv.sources]
 engine = { workspace = true }

@@ -1,0 +1,17 @@
+# Client map for the Outlook take-over (SPEC §5.4, `uv run import-outlook`).
+#
+# Old calendar entries often name no ticket type. When an entry's subject has no ticket words
+# (PHE, CHE, Premium, Classic, Tingkat, + CT), the first client below whose words ALL appear in the
+# subject gives the ticket type. Case, spaces and punctuation are ignored, so "Tour Group" matches
+# "tourgroup".
+#
+#   name   = shown on the review sheet ("client map: <name>")
+#   words  = words that must all be in the subject
+#   ticket = TINGKAT, CLASSIC, CLASSIC_CT, PREMIUM or PREMIUM_CT
+#
+# This repo is public: put only business clients here, never people's names or contact details.
+
+[[client]]
+name = "Sunshine TourGroup"
+words = ["sunshine", "tourgroup"]
+ticket = "TINGKAT"
