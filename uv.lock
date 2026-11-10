@@ -9,6 +9,7 @@ resolution-markers = [
 [manifest]
 members = [
     "engine",
+    "graph",
     "jiak-api",
     "jiak-cli",
     "jiak99",
@@ -269,6 +270,17 @@ wheels = [
 ]
 
 [[package]]
+name = "graph"
+version = "0.1.0"
+source = { editable = "packages/graph" }
+dependencies = [
+    { name = "engine" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "engine", editable = "packages/engine" }]
+
+[[package]]
 name = "h11"
 version = "0.16.0"
 source = { registry = "https://pypi.org/simple" }
@@ -513,6 +525,7 @@ version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
     { name = "engine" },
+    { name = "graph" },
     { name = "jiak-api" },
     { name = "jiak-cli" },
 ]
@@ -530,6 +543,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "engine", editable = "packages/engine" },
+    { name = "graph", editable = "packages/graph" },
     { name = "jiak-api", editable = "apps/api" },
     { name = "jiak-cli", editable = "apps/cli" },
 ]

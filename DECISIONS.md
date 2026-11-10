@@ -130,3 +130,7 @@
 | 2026-11-10 | Event bodies get a fixed layout (booking id, ticket, customer, contact, people, route, times, notes) | Owner wants calendar entries standardised; old bodies are free text |
 | 2026-11-10 | No real calendar data in the repo; tests use anonymised events made by a committed script, plus local-only tests against the real file (`JIAK_REAL_CALENDAR_ICS`) | The GitHub repo is public; the real data has names, phone numbers and emails |
 | 2026-11-10 | The Availability calendar (§5.4) is deferred to after Milestone 4 | Owner: keep M4 to the Bookings calendar and the take-over |
+| 2026-11-11 | The hand-typed subject template also accepts the app's short names in the brackets (`[PHE]`, `[CHE+CT]`, `[Tingkat]`) besides the codes/names in SPEC's pattern | Sales already see these names in the app; widest input that still means one ticket type |
+| 2026-11-11 | A booking's subject and body leave the route out until every sub-group has one (floating groups get routes when the day is planned) | No half-known route like `ABCD/?` in Outlook; the subject is rewritten once the plan sets the routes |
+| 2026-11-11 | Outlook categories for ticket types use the short names (`Tingkat`, `CHE`, `CHE+CT`, `PHE`, `PHE+CT`); the colours are set up once in the mailbox | Short enough to read in a calendar cell; matches the subject |
+| 2026-11-11 | New package `packages/graph` (import name `graph`) depends on `engine` for ticket names and time formatting; like the engine it uses no `datetime` objects (only the real gateway converts) | One place for names and times |
