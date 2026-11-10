@@ -48,7 +48,7 @@ def booking_snapshot(booking: models.Booking) -> dict[str, Any]:
         },
         "notes": booking.notes,
         "sessions": [
-            {"id": s.id, "adults": s.adults, "children": s.children, "zoneId": s.zone_id}
+            {"id": s.id, "adults": s.adults, "children": s.children, "route": s.route}
             for s in booking.sessions
         ],
     }

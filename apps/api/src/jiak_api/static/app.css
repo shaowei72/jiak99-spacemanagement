@@ -173,6 +173,7 @@ th, td { padding: 0.3rem 0.5rem; border: 1px solid var(--line); text-align: left
 .bar.floating { border: 2px dashed #1f2933; }
 .bar.dead { z-index: 1; background: repeating-linear-gradient(45deg, #fdecea, #fdecea 5px, #f6c9c4 5px, #f6c9c4 10px); border-color: #f0b4ad; }
 .bar.blackout { z-index: 1; background: #9aa5b1; }
+.TINGKAT { background: #b45f06; color: #fff; }
 .CLASSIC { background: #2f8f5b; color: #fff; }
 .CLASSIC_CT { background: #1d5e3b; color: #fff; }
 .PREMIUM { background: #7b4bb3; color: #fff; }

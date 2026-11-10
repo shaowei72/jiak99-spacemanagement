@@ -15,7 +15,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
-from engine import Blackout, Price, dead_gaps, is_valid_date
+from engine import Blackout, Price, dead_gaps, is_valid_date, route_visits
 from engine import Settings as EngineSettings
 from engine.dates import add_days, weekday
 from engine.model import day_of
@@ -26,9 +26,10 @@ from engine.rules import (
     TICKET_NAMES,
     TICKET_SHORT_NAMES,
     TICKET_TYPES,
-    ZONE_CAPACITY,
+    ZONE_NAMES,
     ZONES,
     TicketType,
+    is_valid_route,
 )
 from engine.text import format_time
 from jiak_api import business_settings, models, overview, plan
@@ -226,7 +227,7 @@ def calendar_page(
 
 @dataclass(frozen=True)
 class Bar:
-    """Something drawn on a zone's timeline row."""
+    """Something drawn on a zone's timeline row: one group's visit, a blackout or a dead slot."""
 
     kind: str  # 'session', 'blackout' or 'dead'
     start: int
@@ -237,7 +238,7 @@ class Bar:
     title: str = ""  # tooltip
     ticket_type: str = ""
     pinned: bool = False
-    floating: bool = False  # no zone stored yet: the zone shown is only the best plan
+    floating: bool = False  # no route stored yet: the route shown is only the best plan
 
 
 @dataclass(frozen=True)
@@ -248,8 +249,9 @@ class ZoneRow:
 
 @dataclass(frozen=True)
 class SessionLine:
-    """One row of the session list under the timeline."""
+    """One row of the group list under the timeline."""
 
+    number: int  # the label on the group's bars
     id: str
     booking_id: str
     start: str
@@ -257,8 +259,8 @@ class SessionLine:
     ticket_type: str
     name: str
     people: int
-    zone: str  # where the plan puts it
-    stored_zone: str | None
+    route: str  # where the plan sends it, e.g. 'ABDC' ('?' if nothing fits)
+    stored_route: str | None
     pinned: bool
     status: str
 
@@ -272,11 +274,14 @@ def position(start: int, end: int) -> tuple[str, str]:
 
 
 def build_timeline(db: Session, view: DayOut) -> tuple[list[ZoneRow], list[SessionLine]]:
-    """The zone rows (sessions, blackouts and dead gaps) and the session list for one day."""
+    """The zone rows (visits, blackouts and dead slots) and the group list for one day.
+
+    Each group is numbered in time order; its number is the label on every one of its visits,
+    so its route can be followed from zone to zone.
+    """
     settings = load_settings(db)
     day = day_of(load_schedule(db, view.date, view.date), view.date)
     bars: dict[str, list[Bar]] = {zone: [] for zone in ZONES}
-    lines: list[SessionLine] = []
 
     for blackout in view.blackouts:
         start, end = parse_minutes(blackout.start), parse_minutes(blackout.end)
@@ -284,56 +289,63 @@ def build_timeline(db: Session, view: DayOut) -> tuple[list[ZoneRow], list[Sessi
         for zone in ZONES:
             bars[zone].append(Bar("blackout", start, end, left, width, title="Blocked"))
 
-    for booking in view.bookings:
-        for session in booking.sessions:
-            zone = view.assignment.get(session.id, session.zone_id or "?")
-            start = parse_minutes(session.start)
-            ticket_type = cast(TicketType, session.ticket_type)
-            end = start + TICKET_MINUTES[ticket_type]
-            people = session.adults + session.children
-            label = f"{TICKET_SHORT_NAMES[ticket_type]} {people}/{ZONE_CAPACITY}"
-            title = (
-                f"{session.start}–{format_time(end)} · {booking.customer.name} · {people} people"
-            )
-            left, width = position(start, end)
-            if zone in bars:
-                bars[zone].append(
+    groups = [(booking, session) for booking in view.bookings for session in booking.sessions]
+    groups.sort(key=lambda pair: (parse_minutes(pair[1].start), pair[0].customer.name))
+    lines: list[SessionLine] = []
+    for number, (booking, session) in enumerate(groups, start=1):
+        route = view.assignment.get(session.id, session.route or "?")
+        start = parse_minutes(session.start)
+        ticket_type = cast(TicketType, session.ticket_type)
+        end = start + TICKET_MINUTES[ticket_type]
+        people = session.adults + session.children
+        if is_valid_route(ticket_type, route):
+            for visit in route_visits(start, ticket_type, route):
+                left, width = position(visit.start, visit.end)
+                title = (
+                    f"{number}: {TICKET_SHORT_NAMES[ticket_type]} · {booking.customer.name} · "
+                    f"{people} people · zone {visit.zone_id} "
+                    f"{format_time(visit.start)}–{format_time(visit.end)} · route {route}"
+                )
+                bars[visit.zone_id].append(
                     Bar(
                         "session",
-                        start,
-                        end,
+                        visit.start,
+                        visit.end,
                         left,
                         width,
-                        label=label,
+                        label=str(number),
                         title=title,
-                        ticket_type=session.ticket_type,
+                        ticket_type=ticket_type,
                         pinned=session.pinned,
-                        floating=session.zone_id is None,
+                        floating=session.route is None,
                     )
                 )
-            lines.append(
-                SessionLine(
-                    id=session.id,
-                    booking_id=booking.id,
-                    start=session.start,
-                    end=format_time(end),
-                    ticket_type=session.ticket_type,
-                    name=booking.customer.name,
-                    people=people,
-                    zone=zone,
-                    stored_zone=session.zone_id,
-                    pinned=session.pinned,
-                    status=session.status,
-                )
+        lines.append(
+            SessionLine(
+                number=number,
+                id=session.id,
+                booking_id=booking.id,
+                start=session.start,
+                end=format_time(end),
+                ticket_type=ticket_type,
+                name=booking.customer.name,
+                people=people,
+                route=route,
+                stored_route=session.route,
+                pinned=session.pinned,
+                status=session.status,
             )
+        )
 
     if view.assignment:
         for gap in dead_gaps(day.sessions, view.assignment, settings, blackouts=day.blackouts):
             left, width = position(gap.start, gap.end)
-            title = f"Dead gap {format_time(gap.start)}–{format_time(gap.end)}: nothing fits"
+            title = (
+                f"Unsellable {format_time(gap.start)}–{format_time(gap.end)}: "
+                "no ticket but Tingkat can use it"
+            )
             bars[gap.zone_id].append(Bar("dead", gap.start, gap.end, left, width, title=title))
 
-    lines.sort(key=lambda line: (line.start, line.zone))
     rows = [ZoneRow(zone, sorted(bars[zone], key=lambda bar: bar.start)) for zone in ZONES]
     return rows, lines
 
@@ -370,6 +382,7 @@ def ops_page(
         "lines": lines,
         "hours": hours,
         "zones": ZONES,
+        "zone_names": ZONE_NAMES,
         "errors": errors or [],
         "blackouts_input": blackouts_text(view) if blackouts_input is None else blackouts_input,
         "previous_day": add_days(date, -1),
@@ -391,7 +404,7 @@ def ops_day_page(
     _user: AnyUser,
     date: Annotated[str | None, Query()] = None,
 ) -> Response:
-    """The Day plan: one day for operations, zones x time, dead gaps shaded, allocate / lock / pin."""
+    """The Day plan: one day for operations, zones x time, dead slots shaded, allocate / lock / pin."""
     return ops_page(request, db, date_or_today(date, now.today))
 
 
@@ -418,7 +431,7 @@ def ops_allocate(
     now: NowDep,
     user: OperationsUser,
 ) -> Response:
-    """Give every movable group its zone from the best plan."""
+    """Give every movable group its route from the best plan."""
     return run_plan_action(
         request, db, now, date, lambda: plan.allocate_day(database, db, date, actor=user.name)
     )
@@ -433,7 +446,7 @@ def ops_lock(
     now: NowDep,
     user: OperationsUser,
 ) -> Response:
-    """Allocate, then freeze every zone of the day."""
+    """Allocate, then freeze every route of the day."""
     return run_plan_action(
         request, db, now, date, lambda: plan.lock_day(database, db, date, actor=user.name)
     )
@@ -462,25 +475,24 @@ def ops_pin(
     db: DbDep,
     now: NowDep,
     user: OperationsUser,
-    zone: Annotated[str, Form()] = "",
+    route: Annotated[str, Form()] = "",
     pinned: Annotated[str, Form()] = "true",
 ) -> Response:
-    """Pin a group to a zone (the zone chosen in the form), or unpin it."""
+    """Pin a group to a route (the one typed in the form), or unpin it."""
     row = db.get(models.Session, session_id)
     if row is None:
         return ops_page(
             request, db, now.today, errors=["That group no longer exists."], status_code=404
         )
     date = row.date
-    if zone not in ("", *ZONES):
-        return ops_page(request, db, date, errors=["Choose zone A, B, C or D."], status_code=422)
+    route = route.strip()  # plan.pin_session checks the route suits the group's ticket
     try:
         plan.pin_session(
             database,
             db,
             session_id,
             pinned=pinned == "true",
-            zone=zone or None,
+            route=route or None,
             actor=user.name,
         )
     except plan.SessionNotFound:

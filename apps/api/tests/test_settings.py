@@ -66,22 +66,23 @@ def test_save_and_read_back(client: TestClient, database: Database) -> None:
 
 
 def test_settings_change_the_answers(client: TestClient) -> None:
-    """With a 30-minute reset, a session ending 10:30 blocks its zone until 11:00."""
-    for _ in range(4):
-        book(client, "09:00")  # CHE 09:00-10:30, all 4 zones
-    params = {"date": DATE, "start": "10:30", "type": "CLASSIC", "adults": 4}
-    assert client.get("/api/enquiries/check", params=params).json()["verdict"] != "NOT_POSSIBLE"
+    """With a 30-minute reset, the slot just before a group's visit can't be sold any more."""
+    params = {"date": DATE, "start": "11:00", "type": "CLASSIC", "adults": 4}
+    assert client.get("/api/enquiries/check", params=params).json()["verdict"] == "ACCEPT_GOOD"
 
     assert client.put("/api/settings", json=settings(turnaroundMinutes=30)).status_code == 200
-    assert client.get("/api/enquiries/check", params=params).json()["verdict"] == "NOT_POSSIBLE"
+    body = client.get("/api/enquiries/check", params=params).json()
+    assert body["verdict"] == "ACCEPT_COSTLY"
+    assert "10:30–11:00 " in body["reason"]  # a group there would still be reset at 11:00
 
 
 def test_turnaround_that_breaks_existing_bookings_is_refused(
     client: TestClient, database: Database
 ) -> None:
     for _ in range(4):
-        book(client, "09:00")  # ends 10:30
-        book(client, "10:30")  # back to back in every zone
+        book(client, "09:00", "PREMIUM")  # every zone slot 09:00-11:00
+    for _ in range(4):
+        book(client, "11:00", "PREMIUM")  # back to back in every zone
     response = client.put("/api/settings", json=settings(turnaroundMinutes=15))
     assert response.status_code == 409
     assert DATE in response.json()["detail"]
@@ -167,10 +168,10 @@ def test_cannot_close_a_day_with_bookings(client: TestClient) -> None:
 
 
 def test_cannot_black_out_a_booked_time(client: TestClient) -> None:
-    book(client, "14:00")  # CHE 14:00-15:30
-    body = {"closed": False, "blackouts": [{"start": "15:00", "end": "17:00"}]}
+    book(client, "14:00")  # CHE 14:00-15:00
+    body = {"closed": False, "blackouts": [{"start": "14:30", "end": "17:00"}]}
     assert client.put(f"/api/days/{DATE}/settings", json=body).status_code == 409
-    body = {"closed": False, "blackouts": [{"start": "15:30", "end": "17:00"}]}
+    body = {"closed": False, "blackouts": [{"start": "15:00", "end": "17:00"}]}
     assert client.put(f"/api/days/{DATE}/settings", json=body).status_code == 200
 
 

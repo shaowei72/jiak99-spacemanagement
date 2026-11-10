@@ -5,7 +5,7 @@
     uv run seed my-days.json     # any day file in the `uv run check` format
     uv run seed week --replace   # wipe those dates first
 
-Each session in the file becomes one booking (customer "Sample group N"), with its zone and pin
+Each session in the file becomes one booking (customer "Sample group N"), with its route and pin
 kept. Closed days and blackouts become day settings. Uses DATABASE_URL like the API does.
 
 Seeding never touches dates that already have bookings unless you pass --replace, and refuses
@@ -30,7 +30,7 @@ from jiak_api.bookings import split_group
 from jiak_api.config import load_config
 from jiak_api.db import Database
 from jiak_api.migrate import upgrade_to_latest
-from jiak_cli.check import DEFAULT_DAY_FILE, load_days
+from jiak_cli.check import DEFAULT_DAY_FILE, DayFileError, load_days
 
 EXAMPLES = DEFAULT_DAY_FILE.parent  # apps/cli/examples
 SEED_ACTOR = "seed"
@@ -91,12 +91,12 @@ def seed_days(db: Session, days: dict[str, DayState], *, replace: bool) -> int:
 
 
 def sample_booking(session: EngineSession, number: int) -> models.Booking:
-    """One booking for one session of the day file, keeping its zone and pin."""
+    """One booking for one session of the day file, keeping its route and pin."""
     parts = split_group(session.adults, session.children)
-    if session.zone_id is not None and len(parts) > 1:
+    if session.route is not None and len(parts) > 1:
         raise SeedError(
-            f"{session.date} session {number}: a group over 25 can't be given one zone "
-            f"({session.zone_id}). Split it into separate sessions in the day file."
+            f"{session.date} session {number}: a group over 25 can't all take one route "
+            f"({session.route}). Split it into separate sessions in the day file."
         )
     booking = models.Booking(
         customer=models.Customer(name=f"Sample group {number}"),
@@ -117,7 +117,7 @@ def sample_booking(session: EngineSession, number: int) -> models.Booking:
                 ticket_type=session.ticket_type,
                 adults=adults,
                 children=children,
-                zone_id=session.zone_id,
+                route=session.route,
                 pinned=session.pinned,
                 status=session.status,
             )
@@ -186,7 +186,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 total = count_bookings(db)
         finally:
             database.engine.dispose()
-    except SeedError as error:
+    except (SeedError, DayFileError) as error:
         print(f"seed: {error}", file=sys.stderr)
         return 1
 

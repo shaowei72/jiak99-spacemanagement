@@ -66,7 +66,7 @@ class Customer(Base):
 
 
 class Booking(Base):
-    """One group's booking. It owns one session per zone it takes (more than one if over 25)."""
+    """One group's booking. It owns one session per sub-group (more than one if over 25)."""
 
     __tablename__ = "bookings"
 
@@ -93,7 +93,7 @@ class Booking(Base):
 
 
 class Session(Base):
-    """One group in one zone for one time slot. Deleted when its booking is cancelled."""
+    """One group (or sub-group) moving through its zones. Deleted when its booking is cancelled."""
 
     __tablename__ = "sessions"
     __table_args__ = (Index("ix_sessions_date", "date"),)
@@ -105,7 +105,8 @@ class Session(Base):
     ticket_type: Mapped[str] = mapped_column(String(20))
     adults: Mapped[int]
     children: Mapped[int]
-    zone_id: Mapped[str | None] = mapped_column(String(1))  # None = floating (no zone yet)
+    # Zone letters in visiting order, e.g. "ABDC". None = floating (no route fixed yet).
+    route: Mapped[str | None] = mapped_column(String(4))
     pinned: Mapped[bool] = mapped_column(default=False)
     status: Mapped[str] = mapped_column(String(20), default="open")  # open/locked/in_progress/done
 

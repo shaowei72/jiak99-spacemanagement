@@ -3,17 +3,17 @@ from pathlib import Path
 
 import pytest
 
-from jiak_cli.check import ZONE_COLUMN_WIDTH, main, parse_ticket_type
+from jiak_cli.check import ZONE_COLUMN_WIDTH, load_days, main, parse_ticket_type
 
 EXAMPLE = Path(__file__).parent.parent / "examples" / "busy-day.json"
 
 
 def test_cli_prints_verdict_reason_and_options(capsys: pytest.CaptureFixture[str]) -> None:
-    main(["2026-12-01", "10:00", "premium", "10", "--today", "2026-12-01", "--empty-day"])
+    main(["2026-12-01", "20:30", "classic", "8", "--today", "2026-12-01", "--empty-day"])
     out = capsys.readouterr().out
-    assert "Verdict: ACCEPT_COSTLY" in out
-    assert "leaves 09:00–10:00 in one zone unsellable" in out
-    assert "1. ACCEPT_GOOD   2026-12-01 10:30 · PHE  Start 10:30 instead of 10:00" in out
+    assert "Verdict: NOT_POSSIBLE" in out
+    assert "A 1 h CHE from 20:30 would end after the 21:00 close." in out
+    assert "1. ACCEPT_GOOD   2026-12-01 20:00 · CHE  Start 20:00 instead of 20:30" in out
 
 
 def test_cli_sales_board(capsys: pytest.CaptureFixture[str]) -> None:
@@ -32,11 +32,13 @@ def test_cli_sales_board(capsys: pytest.CaptureFixture[str]) -> None:
         ]
     )
     out = capsys.readouterr().out
-    assert "Reason:  Fits in a free zone with no unsellable gaps." in out
+    assert "Reason:  Fits (route " in out
     assert "Sales board for 12 people" in out
     assert "Operations board" not in out
-    assert "  09:00    x        x        x        x" in out  # all 4 zones taken
-    assert "  11:00    +        +        +        +" in out
+    assert "Tingkat     CHE     CHE+CT      PHE     PHE+CT" in out
+    # 09:30: B, C and D are all in use in busy-day.json, and so is A.
+    assert "  09:30     x         x         x         x         x" in out
+    assert "  11:00     +         +         +         +         +" in out
 
 
 def board_rows(out: str) -> dict[str, list[str]]:
@@ -58,26 +60,26 @@ def test_cli_operations_board_is_the_default(capsys: pytest.CaptureFixture[str])
     assert "        A           B           C           D" in out
     rows = board_rows(out)
     assert len(rows) == 24  # 09:00 to 20:30
-    assert rows["09:00"][0] == "PHE+CT 12 p"  # pinned to A in busy-day.json
-    assert rows["11:30"][0] == "PHE+CT"  # 3 hours: 09:00-12:00
-    assert rows["12:00"][0] == "."
-    # The request is on the board, with its headcount on its first row.
-    assert "*PHE 10*" in rows["11:30"]
-    zone = rows["11:30"].index("*PHE 10*")
-    assert [rows[t][zone] for t in ("12:00", "12:30", "13:00")] == ["*PHE*"] * 3
-    # The 30 minutes the reason talks about show up as a dead gap.
-    assert "leaves 11:00–11:30 in one zone unsellable" in out
-    assert "-dead-" in rows["11:00"]
+    # Group 3 is pinned to route ABDC in busy-day.json: A 30 min, B 1 h, D 30 min, C 1 h.
+    assert rows["09:00"][0] == "3 PHE+CT"
+    assert [rows[t][1] for t in ("09:30", "10:00")] == ["3 PHE+CT"] * 2
+    assert rows["10:30"][3] == "3 PHE+CT"
+    assert [rows[t][2] for t in ("11:00", "11:30")] == ["3 PHE+CT"] * 2
+    assert "3 = 09:00 · PHE+CT, 12 people, route ABDC, pinned" in out
+    # The request is on the board: one slot in each zone from 11:30 to 13:30.
+    request_cells = [cell for t in ("11:30", "12:00", "12:30", "13:00") for cell in rows[t]]
+    assert request_cells.count("* PHE") == 4
+    assert "* = 11:30 · PHE, 10 people, route " in out
 
 
 def test_cli_operations_board_without_a_fit(capsys: pytest.CaptureFixture[str]) -> None:
-    main(["2026-12-01", "10:00", "PREMIUM", "10", "--today", "2026-12-01"])
+    main(["2026-12-01", "10:00", "TINGKAT", "4", "--today", "2026-12-01"])
     out = capsys.readouterr().out
-    assert "All 4 zones are in use" in out  # busy-day.json fills every zone at 10:00
+    assert "Zones B, C and D are in use at 10:00." in out
     assert "*" not in "".join(cell for row in board_rows(out).values() for cell in row)
 
 
-def test_cli_operations_board_big_group_and_turnaround(
+def test_cli_operations_board_split_group_and_turnaround(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     main(
@@ -95,8 +97,10 @@ def test_cli_operations_board_big_group_and_turnaround(
     )
     out = capsys.readouterr().out
     rows = board_rows(out)
-    assert sorted(rows["10:00"][:2]) == ["*PHE 15*", "*PHE 25*"]
-    assert rows["12:00"][:2] == ["(reset)", "(reset)"]
+    # Two sub-groups of 20, each in a different zone at 10:00, each zone reset after its visit.
+    assert rows["10:00"].count("* PHE") == 2
+    assert rows["10:30"].count("(reset)") == 2
+    assert "is split into 2 groups (20 + 20)" in out
     assert "(reset) = turnaround" in out
 
 
@@ -121,11 +125,12 @@ def test_cli_operations_board_blackouts_and_closed_days(
 def test_cli_operations_board_with_an_overfull_day_file(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    five_groups = ", ".join(['{"start": "10:00", "type": "CLASSIC", "adults": 2}'] * 5)
+    # Three Classic groups at 10:00 all need zone A within one hour: one too many.
+    three_groups = ", ".join(['{"start": "10:00", "type": "CLASSIC", "adults": 2}'] * 3)
     day_file = tmp_path / "days.json"
-    day_file.write_text(f'{{"2026-12-01": [{five_groups}]}}', encoding="utf-8")
+    day_file.write_text(f'{{"2026-12-01": [{three_groups}]}}', encoding="utf-8")
     main(["2026-12-01", "15:00", "CLASSIC", "4", "--day", str(day_file), "--today", "2026-12-01"])
-    assert "don't fit in 4 zones" in capsys.readouterr().out
+    assert "The groups in the day file don't all fit." in capsys.readouterr().out
 
 
 def test_cli_no_board_hides_the_board(capsys: pytest.CaptureFixture[str]) -> None:
@@ -157,12 +162,45 @@ def test_cli_accepts_ticket_type_spellings(text: str, capsys: pytest.CaptureFixt
 
 
 @pytest.mark.parametrize(
-    ("text", "code"), [("che", "CLASSIC"), ("PHE", "PREMIUM"), ("phe+ct", "PREMIUM_CT")]
+    ("text", "code"),
+    [("che", "CLASSIC"), ("PHE", "PREMIUM"), ("phe+ct", "PREMIUM_CT"), ("tingkat", "TINGKAT")],
 )
 def test_short_labels_are_read_as_codes(text: str, code: str) -> None:
     assert parse_ticket_type(text) == code
 
 
 def test_unknown_ticket_type_lists_the_labels() -> None:
-    with pytest.raises(argparse.ArgumentTypeError, match=r"CHE, CHE\+CT, PHE, PHE\+CT"):
+    with pytest.raises(argparse.ArgumentTypeError, match=r"Tingkat, CHE, CHE\+CT, PHE, PHE\+CT"):
         parse_ticket_type("XHE")
+
+
+def test_day_file_routes_are_read_in_capitals(tmp_path: Path) -> None:
+    day_file = tmp_path / "days.json"
+    day_file.write_text(
+        '{"2026-12-01": [{"start": "10:00", "type": "PHE", "adults": 4, "route": " abdc ",'
+        ' "pinned": true}, {"start": "11:00", "type": "CHE", "adults": 4, "route": ""}]}',
+        encoding="utf-8",
+    )
+    first, second = load_days(day_file)["2026-12-01"].sessions
+    assert (first.route, second.route) == ("ABDC", None)
+
+
+@pytest.mark.parametrize(
+    ("session", "message"),
+    [
+        (
+            '{"start": "10:00", "type": "PHE", "adults": 4, "route": "AB"}',
+            "AB is not a route a PHE",
+        ),
+        ('{"start": "10:00", "type": "PHE", "adults": 4, "route": "ABCE"}', "ABCE is not a route"),
+        ('{"start": "10:00", "type": "PHE"}', "session 1: give it 'adults' or 'children'"),
+    ],
+)
+def test_cli_refuses_a_bad_session_in_the_day_file(
+    session: str, message: str, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    day_file = tmp_path / "days.json"
+    day_file.write_text(f'{{"2026-12-01": [{session}]}}', encoding="utf-8")
+    exit_code = main(["2026-12-01", "15:00", "CLASSIC", "4", "--day", str(day_file)])
+    assert exit_code == 1
+    assert message in capsys.readouterr().err

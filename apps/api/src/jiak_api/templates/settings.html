@@ -7,10 +7,10 @@
 {% include "_errors.html" %}
 
 <form method="post" action="/settings" class="settings">
-  <label>Turnaround after each session (minutes)
+  <label>Zone reset after each visit (minutes)
     <input type="number" name="turnaroundMinutes" value="{{ form.turnaroundMinutes }}" min="0" max="120">
   </label>
-  <label>Warn when a new zone opens for fewer than (people, 0 = off)
+  <label>Warn when a group is smaller than (people, 0 = off)
     <input type="number" name="smallGroupWarnBelow" value="{{ form.smallGroupWarnBelow }}" min="0" max="25">
   </label>
   <label>"Another day" alternatives: days searched either side

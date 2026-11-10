@@ -14,8 +14,11 @@ def ticket_label(ticket_type: TicketType) -> str:
 
 
 def duration_label(ticket_type: TicketType) -> str:
-    """'CLASSIC' -> '1.5 h', 'PREMIUM' -> '2 h'."""
-    return f"{TICKET_MINUTES[ticket_type] / 60:g} h"
+    """'TINGKAT' -> '30 min', 'CLASSIC' -> '1 h', 'CLASSIC_CT' -> '1.5 h'."""
+    minutes = TICKET_MINUTES[ticket_type]
+    if minutes < 60:
+        return f"{minutes} min"
+    return f"{minutes / 60:g} h"
 
 
 def slot_label(start: int, ticket_type: TicketType) -> str:

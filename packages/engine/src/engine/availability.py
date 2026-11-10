@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from typing import Literal
 
 from engine.assign import assign
-from engine.evaluate import new_floating_sessions, validity_problem, zone_sizes
+from engine.evaluate import group_sizes, new_floating_sessions, validity_problem
 from engine.model import Enquiry, Schedule, Settings, day_of
 from engine.rules import START_TIMES, TICKET_TYPES, TicketType
 
@@ -15,8 +15,8 @@ SlotStatus = Literal["available", "full", "not_offered"]
 class Slot:
     """One start time × ticket type on the board.
 
-    available:   enough free zones can be found for the group.
-    full:        not enough free zones (a zone taken by any group is sold out).
+    available:   a route can be found for every sub-group of the group.
+    full:        no such routes (a zone slot taken by any group is sold out).
     not_offered: the slot can't be sold at all (ends after close, past, blackout, closed day...).
     """
 
@@ -43,7 +43,7 @@ def availability(
             if validity_problem(enquiry, day, settings, today=today, now_minute=now_minute):
                 slots.append(Slot(start, ticket_type, "not_offered"))
                 continue
-            new = new_floating_sessions(enquiry, zone_sizes(people))
+            new = new_floating_sessions(enquiry, group_sizes(people))
             fits = assign(day.sessions + new, settings, blackouts=day.blackouts, optimise=False)
             slots.append(Slot(start, ticket_type, "available" if fits.ok else "full"))
     return tuple(slots)

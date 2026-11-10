@@ -15,7 +15,9 @@
   <p><strong>{{ booking.customer.name }}</strong>{% if booking.customer.company %} · {{ booking.customer.company }}{% endif %}</p>
   <p>{{ booking.date }} · {{ booking.start }} · {{ short_names.get(booking.ticket_type, booking.ticket_type) }} – {{ ticket_names.get(booking.ticket_type, "") }}</p>
   <p>{{ people(booking.adults, booking.children) }}
-    {% if booking.sessions | length > 1 %}· takes {{ booking.sessions | length }} zones{% endif %}</p>
+    {% if booking.sessions | length > 1 %}· split into {{ booking.sessions | length }} groups{% endif %}
+    {% set routes = booking.sessions | map(attribute="route") | select | list %}
+    {% if routes %}· route {{ routes | join("/") }}{% endif %}</p>
   {% if booking.customer.phone or booking.customer.email %}
   <p class="detail">
     {{ booking.customer.phone or "" }}{% if booking.customer.phone and booking.customer.email %} · {% endif %}{{ booking.customer.email or "" }}

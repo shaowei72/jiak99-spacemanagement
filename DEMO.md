@@ -52,7 +52,7 @@ Open **http://127.0.0.1:8000** in the browser. Leave PowerShell open while you d
 | **Check and book** | 2026-12-01, 10:00, PHE, 30 adults → verdict, reason, alternatives and every time that fits. Click a time, press **Book**, enter a name. Leave Start empty to see only the times |
 | **Calendar** | Find December 2026 (**Later →** if it isn't shown); busier days are darker; click a day |
 | **Bookings** | Find the booking you just made; **Edit** it (move it to a full time to see it refused, with alternatives), then **Cancel booking** |
-| **Day plan** | 2026-12-01: zones A–D over the day, dead gaps hatched. Press **Allocate**, pin a group, **Lock day** |
+| **Day plan** | 2026-12-01: zones A–D over the day; each group's visits are numbered bars, unsellable slots hatched. Press **Allocate**, pin a route, **Lock day**. 2026-12-04 has every route pinned |
 | **Settings** | Turnaround 15 minutes → Save, then look at the Day plan again |
 | **API** | http://127.0.0.1:8000/docs lists every route and lets you try it |
 

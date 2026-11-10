@@ -115,11 +115,11 @@ def test_moving_to_another_date_and_ticket_type(client: TestClient) -> None:
     assert len(client.get("/api/days/2026-12-02").json()["bookings"]) == 1
 
 
-def test_growing_past_25_takes_a_second_zone(client: TestClient) -> None:
+def test_growing_past_25_splits_the_group(client: TestClient) -> None:
     mine = book(client, adults=20)
     body = client.patch(f"/api/bookings/{mine['id']}", json={"adults": 30}).json()
     sizes = sorted((s["adults"], s["children"]) for s in body["sessions"])
-    assert sizes == [(5, 0), (25, 0)]
+    assert sizes == [(15, 0), (15, 0)]
 
 
 def test_edit_notes_and_customer_only(client: TestClient) -> None:

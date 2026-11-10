@@ -2,7 +2,8 @@
 
 Main entry points:
     check_enquiry  - verdict + alternatives for a sales enquiry
-    assign         - give every session of a day a zone
+    assign         - give every session of a day a route (an order of zones)
+    route_visits   - the zone visits of one route
     availability   - the availability board for a group size
     day_metrics    - utilisation figures for one day
 """
@@ -22,7 +23,7 @@ from engine.evaluate import (
 )
 from engine.metrics import DayMetrics, day_metrics, seat_hour_use, zone_hour_use
 from engine.model import Blackout, DayState, Enquiry, Price, Schedule, Session, Settings
-from engine.timeline import Gap, dead_gaps
+from engine.timeline import Gap, Visit, dead_gaps, route_visits
 
 __all__ = [
     "Alternative",
@@ -43,6 +44,7 @@ __all__ = [
     "Slot",
     "SplitPlacement",
     "Verdict",
+    "Visit",
     "add_days",
     "assign",
     "availability",
@@ -51,6 +53,7 @@ __all__ = [
     "days_between",
     "dead_gaps",
     "is_valid_date",
+    "route_visits",
     "seat_hour_use",
     "zone_hour_use",
 ]

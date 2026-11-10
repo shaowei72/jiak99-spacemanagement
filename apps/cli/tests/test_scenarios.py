@@ -20,7 +20,7 @@ def test_scenario_week_loads_closed_days_and_blackouts() -> None:
     assert "_about" not in days
     assert days["2026-12-08"].closed
     assert len(days["2026-12-07"].blackouts) == 1
-    assert len(days["2026-12-05"].sessions) == 23
+    assert len(days["2026-12-05"].sessions) == 24
 
 
 def test_runner_reports_a_wrong_expectation(
@@ -34,3 +34,15 @@ def test_runner_reports_a_wrong_expectation(
 
     assert main(["--file", str(wrong), "--verbose"]) == 1
     assert "verdict ACCEPT_GOOD, expected NOT_POSSIBLE" in capsys.readouterr().out
+
+
+def test_runner_reports_a_bad_day_file(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    day_file = tmp_path / "days.json"
+    day_file.write_text('{"2026-12-01": [{"start": "10:00", "type": "PHE"}]}', encoding="utf-8")
+    spec_file = tmp_path / "scenarios.json"
+    spec_file.write_text(
+        json.dumps({"days": str(day_file), "today": "2026-12-01", "scenarios": []}),
+        encoding="utf-8",
+    )
+    assert main(["--file", str(spec_file)]) == 1
+    assert "give it 'adults' or 'children'" in capsys.readouterr().err

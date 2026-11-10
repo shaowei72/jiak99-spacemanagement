@@ -2,26 +2,34 @@
 
 > **Running a demo on another PC? Follow [DEMO.md](DEMO.md).**
 
-Helps sales and operations sell and allocate 4 identical zones (up to 25 people each). Each group gets a zone of
-its own: once a zone is taken, it is sold out for that time slot, however few people are in it.
+Helps sales and operations sell Jiak99's 4 zones (up to 25 people each): A Tour/Exhibit, B Dining,
+C Chef's Table / Dining and D Sandart. A group moves through several zones during its stay, 30 min at a time,
+back to back; the order of the zones (its **route**, e.g. `ABDC`) is planned by the app. A 30-min zone slot holds
+one group, however few people are in it. Groups over 25 are split evenly into sub-groups with their own routes.
 
-| Code | Label | Ticket | Length |
-| --- | --- | --- | --- |
-| `CLASSIC` | CHE | Classic Hawker Experience | 1.5 h |
-| `CLASSIC_CT` | CHE+CT | Classic Hawker Experience + Chef's Table | 1.5 h |
-| `PREMIUM` | PHE | Premium Hawker Experience | 2 h |
-| `PREMIUM_CT` | PHE+CT | Premium Hawker Experience + Chef's Table | 3 h |
+| Code | Label | Ticket | Zones (the app picks one set and the order) | Length |
+| --- | --- | --- | --- | --- |
+| `TINGKAT` | Tingkat | Tingkat Meals | B, C or D | 30 min |
+| `CLASSIC` | CHE | Classic Hawker Experience | A + one of B, C, D | 1 h |
+| `CLASSIC_CT` | CHE+CT | Classic Hawker Experience + Chef's Table | A + D + one of B, C | 1.5 h |
+| `PREMIUM` | PHE | Premium Hawker Experience | A, B, C, D | 2 h |
+| `PREMIUM_CT` | PHE+CT | Premium Hawker Experience + Chef's Table | A 30 min, B 1 h, C 1 h, D 30 min | 3 h |
 
 Codes are what the database and API store; labels and names are display-only (`engine/rules.py`), so they can be
 renamed without touching data.
 
-`SPEC.md` is the contract, `DECISIONS.md` records deviations, `CLAUDE.md` has working rules.
+`SPEC.md` is the contract, `DECISIONS.md` records deviations, `CLAUDE.md` has working rules. How the engine plans
+routes and judges waste: [docs/ENGINE.md](docs/ENGINE.md).
 
 ## Status
 
-Done: Milestone 1 (the engine, `packages/engine`, plus a command-line tool), Milestone 2 (API + database) and
-Milestone 3 (web pages: Check and book, Bookings, Day plan, 6-month calendar, settings). Next: Milestone 4,
-Outlook sync.
+Done: Milestone 1 (the engine, `packages/engine`, plus a command-line tool), Milestone 2 (API + database),
+Milestone 3 (web pages: Check and book, Bookings, Day plan, 6-month calendar, settings) and Milestone 3R (the
+zone-route rules of SPEC v0.4, 2026-11-09). Next: Milestone 4, Outlook sync.
+
+**After pulling Milestone 3R:** run `uv run alembic upgrade head`. Stored zones can't become routes, so every
+existing group becomes unplanned (no route, not pinned) until the day is allocated again. Old example data may not
+fit the new rules any more; reload it with `uv run seed week --replace` and `uv run seed --replace`.
 
 ## Setup
 
@@ -48,9 +56,10 @@ are empty), and the board is printed. `--day` and `--empty-day` can't be used to
 
 Two boards (`--no-board` hides them):
 
-- `--board operations` (default): zones A–D across, time down. Each cell shows the ticket type in that zone
-  under the engine's current best plan, with the request added and marked `*`. Only pinned zones (`p`) are
-  fixed; the rest may still move until ops allocates the day.
+- `--board operations` (default): zones A–D across, time down. Each cell shows which group is in that zone
+  (its number in the day file and its ticket) under the engine's current best plan, with the request added and
+  marked `*`. A list under the board gives each group's size and route. Only pinned routes are fixed; the rest
+  may still change until ops allocates the day.
 - `--board sales`: start times down, ticket types across. `+` = a group this size can still be sold.
 
 Ticket types can be typed as the label (`PHE`, `che+ct`) or the code, in any case, with `_`, `-` or a space
@@ -60,7 +69,7 @@ Write a day file in the same format as `apps/cli/examples/week.json` to try real
 
 ## Scenario week
 
-`uv run scenarios` checks 29 enquiries against an 8-day test week and compares each answer with the expected
+`uv run scenarios` checks 31 enquiries against an 8-day test week and compares each answer with the expected
 one. How the scenarios were built and what each one tests: `apps/cli/examples/SCENARIOS.md`.
 
 ## API and database
@@ -80,7 +89,7 @@ are optional) and press Book. If the slot filled up after the check (when pressi
 says **No longer fits** and shows fresh alternatives; "Not possible" is only the answer to Check. Each booking has its own page, `/bookings/<id>`.
 
 The other pages (top menu): **Bookings** (`/bookings`, the list from today on, filter by dates and customer;
-each booking can be edited, cancelled or marked no-show), **Day plan** (`/ops`, zones × time with dead gaps; allocate, lock, pin, closed day and
+each booking can be edited, cancelled or marked no-show), **Day plan** (`/ops`, zones × time: each group's visits are numbered bars, unsellable slots hatched; allocate, lock, pin a route, closed day and
 blocked times), **Calendar** (`/calendar`, six months coloured by seat-hour use) and **Settings** (`/settings`). The
 full availability grid is still at `/board`, without a menu link.
 
@@ -88,7 +97,7 @@ The same data as JSON, once the server runs (after `uv run seed`):
 
 - http://127.0.0.1:8000/api/availability?date=2026-12-01&n=10 — the sales board for a group of 10
 - http://127.0.0.1:8000/api/calendar?from=2026-12-01&to=2027-05-31 — per-day use for the 6-month calendar
-- http://127.0.0.1:8000/api/days/2026-12-01 — one day: bookings, zone plan and metrics
+- http://127.0.0.1:8000/api/days/2026-12-01 — one day: bookings, routes and metrics
 
 Changes (book, edit, cancel, no-show, allocate, lock/unlock, pin) are easiest to try in `/docs`. Leave `x-role`
 empty to act as Operations, or type `Sales`.
@@ -104,7 +113,7 @@ uv run seed week             # the scenario week (week.json), incl. a closed day
 uv run seed week --replace   # wipe those dates first (also removes real bookings on them)
 ```
 
-Each session becomes one booking ("Sample group N"), keeping its zone and pin. Seeding refuses dates that already
+Each session becomes one booking ("Sample group N"), keeping its route and pin. Seeding refuses dates that already
 have bookings unless you pass `--replace`, and refuses any non-SQLite database unless you pass `--yes`. To start
 completely fresh, stop the server, delete `jiak99-dev.db` and run `uv run alembic upgrade head`.
 
@@ -169,4 +178,4 @@ Remove-Item Env:TEST_DATABASE_URL
 ## What the Microsoft 365 admin will need to do
 
 Nothing yet. Needed from Milestone 4 (see `SPEC.md` §5.4): an Entra app registration with `Calendars.ReadWrite`
-application permission, restricted to the bookings and zone mailboxes.
+application permission, restricted to the bookings shared mailbox (no zone room mailboxes are needed).

@@ -18,7 +18,13 @@ from typing import Any
 
 from engine import Enquiry, EnquiryResult, Settings, check_enquiry
 from engine.text import format_time
-from jiak_cli.check import format_result, load_days, parse_ticket_type, parse_time
+from jiak_cli.check import (
+    DayFileError,
+    format_result,
+    load_days,
+    parse_ticket_type,
+    parse_time,
+)
 
 DEFAULT_FILE = Path(__file__).resolve().parents[2] / "examples" / "scenarios.json"
 
@@ -91,7 +97,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8")
     spec: dict[str, Any] = json.loads(args.file.read_text(encoding="utf-8"))
-    days = load_days(args.file.parent / spec["days"])
+    try:
+        days = load_days(args.file.parent / spec["days"])
+    except DayFileError as error:
+        print(f"scenarios: {error}", file=sys.stderr)
+        return 1
     scenarios = spec["scenarios"]
     if args.show:
         scenarios = [s for s in scenarios if s["id"] == args.show]

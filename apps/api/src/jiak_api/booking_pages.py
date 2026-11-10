@@ -288,7 +288,7 @@ def cancel_booking(
     now: NowDep,
     user: SalesUser,
 ) -> Response:
-    """Cancel the booking; its zones become free again."""
+    """Cancel the booking; its zone slots become free again."""
     try:
         bookings.cancel_booking(database, db, booking_id, actor=user.name)
     except bookings.BookingNotFound:
@@ -308,7 +308,7 @@ def no_show(
     now: NowDep,
     user: OperationsUser,
 ) -> Response:
-    """The group didn't come (only after the start time). Its zones become free again."""
+    """The group didn't come (only after the start time). Its zone slots become free again."""
     try:
         bookings.mark_no_show(database, db, booking_id, actor=user.name, now=now)
     except bookings.BookingNotFound:

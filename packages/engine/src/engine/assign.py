@@ -1,38 +1,41 @@
-"""Zone assignment (SPEC §4.1).
+"""Route assignment (SPEC §4.1).
 
-Give every session a zone so that no two sessions in a zone overlap, keep fixed sessions where
-they are, and among all valid plans pick one with the fewest dead minutes.
+Give every session a route (an order of zones) so that no zone slot holds two groups, keep
+fixed sessions on their route, and among all valid plans pick one with the fewest dead minutes.
 
 How the search works
 --------------------
 Floating sessions are placed one at a time, in order of start time. For each one we try every
-zone it fits in. Because we go in start-time order, once a session is placed in a zone, nothing
-placed later can go before it in that zone. So for the rest of the search, a zone is fully
-described by two things:
+route its ticket allows (up to 24) that still fits.
 
-* `free_from`: when it is free again (rounded up to the grid), and
-* which of its fixed blocks (pinned sessions, blackouts) are still ahead.
+Because we go in start-time order, everything placed later starts at or after the current
+session. So once the search has moved far enough past a slot, nothing can change whether that
+slot is dead any more: we count it ("settle" it) and forget about it. A slot is settled once
+the current start is more than a route's length (plus reset time) after it.
 
-Two zones with the same description are interchangeable, so we only try one of them (this is
-the "symmetry breaking" from the spec). And whenever we meet the same set of zone descriptions
-again at the same step, the best answer from there is already known, so we look it up instead of
-searching again (memoisation). Together this makes the search exact and fast.
+What is left to decide then depends only on the slots that aren't settled yet. Whenever the
+search meets the same unsettled slots again at the same step, the best answer from there is
+already known, so we look it up instead of searching again (memoisation). Together this makes
+the search exact and fast: we find a plan whenever one exists, and the one we return has the
+fewest dead minutes (unless the time budget runs out first).
 """
 
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
-from itertools import pairwise
 
 from engine.budget import SearchBudget
 from engine.model import Blackout, Session, Settings
-from engine.rules import CLOSE, OPEN, ZONES
+from engine.rules import CLOSE, GRID, OPEN, ROUTES, SLOTS_PER_DAY, TICKET_MINUTES, is_valid_route
 from engine.timeline import (
-    Block,
-    blackout_block,
-    dead_minutes_in_gap,
-    occupancy_end,
-    round_up_to_grid,
-    session_block,
+    LONGEST_ROUTE_SLOTS,
+    Footprint,
+    blackout_mask,
+    dead_mask,
+    fits,
+    footprint,
+    reset_minutes,
+    slot_index,
+    window_mask,
 )
 
 
@@ -41,18 +44,27 @@ class Assignment:
     """Result of `assign`.
 
     ok:           False if the sessions can't all fit, whatever we do.
-    zone_of:      session id -> zone id, for every session (fixed ones included).
+    route_of:     session id -> route, for every session (fixed ones included).
     dead_minutes: total unsellable minutes over all zones under this plan.
     optimal:      False if the time budget ran out before the best plan was proven.
     """
 
     ok: bool
-    zone_of: Mapping[str, str] = field(default_factory=dict)
+    route_of: Mapping[str, str] = field(default_factory=dict)
     dead_minutes: int = 0
     optimal: bool = True
 
 
 INFEASIBLE = Assignment(ok=False)
+
+
+def is_schedulable(session: Session) -> bool:
+    """True if a session's ticket and start make sense: known ticket, on the grid, ends by 21:00."""
+    if session.ticket_type not in TICKET_MINUTES:
+        return False
+    if session.start < OPEN or (session.start - OPEN) % GRID != 0:
+        return False
+    return session.start + TICKET_MINUTES[session.ticket_type] <= CLOSE
 
 
 def assign(
@@ -62,193 +74,272 @@ def assign(
     blackouts: Iterable[Blackout] = (),
     budget: SearchBudget | None = None,
     optimise: bool = True,
+    avoid: int = 0,
 ) -> Assignment:
-    """Find zones for all sessions of one day.
+    """Find routes for all sessions of one day.
 
     With `optimise=False` the first valid plan is returned (enough to answer "does it fit?").
+    `avoid` is a mask of zone slots that must stay completely free (no visit, no reset time).
+    It lets us ask "is there a plan that keeps this slot free?".
     """
-    blackout_blocks = [blackout_block(b) for b in blackouts]
-    fixed_blocks: dict[str, list[Block]] = {zone: list(blackout_blocks) for zone in ZONES}
-    zone_of: dict[str, str] = {}
+    reset = reset_minutes(settings)
+    blocked = blackout_mask(blackouts)
+    visits = 0
+    resets = 0
+    route_of: dict[str, str] = {}
     floating: list[Session] = []
 
     for session in sessions:
+        if not is_schedulable(session):
+            return INFEASIBLE
         if session.is_fixed:
-            assert session.zone_id is not None  # is_fixed guarantees this
-            if session.zone_id not in fixed_blocks:
-                return INFEASIBLE  # pinned to a zone that doesn't exist
-            fixed_blocks[session.zone_id].append(session_block(session, settings))
-            zone_of[session.id] = session.zone_id
+            assert session.route is not None  # is_fixed guarantees this
+            if not is_valid_route(session.ticket_type, session.route):
+                return INFEASIBLE
+            place = footprint(session.start, session.ticket_type, session.route, reset)
+            # Blackouts can be added after a group was booked, so check them here too.
+            if not fits(place, visits, visits | resets | blocked) or _touches(place, avoid):
+                return INFEASIBLE
+            visits |= place.visits
+            resets |= place.resets
+            route_of[session.id] = session.route
         else:
             floating.append(session)
 
-    if any(_fixed_sessions_overlap(blocks) for blocks in fixed_blocks.values()):
-        return INFEASIBLE
-
-    search = _Search(floating, fixed_blocks, settings, budget, optimise)
+    search = _Search(floating, visits, resets, blocked, avoid, reset, budget, optimise)
     result = search.run()
     if result is None:
         return INFEASIBLE
-    dead_minutes, floating_zones = result
-    zone_of.update(floating_zones)
+    dead_slots, floating_routes = result
+    route_of.update(floating_routes)
     return Assignment(
-        ok=True, zone_of=zone_of, dead_minutes=dead_minutes, optimal=not search.cut_short
+        ok=True,
+        route_of=route_of,
+        dead_minutes=dead_slots * GRID,
+        optimal=not search.cut_short,
     )
 
 
-def _fixed_sessions_overlap(blocks: Sequence[Block]) -> bool:
-    session_blocks = sorted(b for b in blocks if b.is_session)
-    return any(a.end > b.start for a, b in pairwise(session_blocks))
+# The occupied slots during the search: (visits, resets).
+_State = tuple[int, int]
+# A remembered state: (step, visits, resets), with only the slots that still matter kept.
+_Key = tuple[int, int, int]
 
-
-# A zone during the search: (free_from, index of its next fixed block not yet reached).
-_ZoneState = tuple[int, int]
-# All zones, in ZONES order.
-_State = tuple[_ZoneState, ...]
-# What makes a zone different from another one: free_from and the fixed blocks still ahead.
-_ZoneKey = tuple[int, tuple[Block, ...]]
+NO_LIMIT = 10**9  # more dead slots than a day can have
+NOT_EXACT = -1  # in best_memo: the value is only a lower bound, no route was chosen
 
 
 class _Search:
+    """The search for one day. Two questions, each with its own memory:
+
+    * `_can_finish`: can the remaining sessions still be placed at all? Only slots from the
+      current start time on matter for that, so many different pasts look the same here.
+    * `_best`: the fewest dead slots still to be counted. It only ever tries routes after
+      which `_can_finish` says yes, so it never wanders into dead ends. When the time budget
+      runs out it takes the first such route at every step and is done at once.
+    """
+
     def __init__(
         self,
         floating: list[Session],
-        fixed_blocks: dict[str, list[Block]],
-        settings: Settings,
+        visits: int,
+        resets: int,
+        blocked: int,
+        avoid: int,
+        reset: int,
         budget: SearchBudget | None,
         optimise: bool,
     ) -> None:
         # Longer sessions first among equal starts: they are the hardest to fit.
-        self.floating = sorted(floating, key=lambda s: (s.start, -s.minutes, s.id))
-        self.zones = tuple(fixed_blocks)
-        self.blocks = tuple(tuple(sorted(fixed_blocks[z])) for z in self.zones)
-        # remaining[z][i] = the fixed blocks of zone z from index i on (precomputed once).
-        self.remaining = tuple(
-            tuple(blocks[i:] for i in range(len(blocks) + 1)) for blocks in self.blocks
+        self.floating = sorted(
+            floating, key=lambda s: (s.start, -TICKET_MINUTES[s.ticket_type], s.id)
         )
-        self.settings = settings
+        self.options = [_route_options(s, reset, avoid) for s in self.floating]
+        self.start_state: _State = (visits, resets)
+        self.blocked = blocked
+        self.reset = reset
         self.budget = budget
         self.optimise = optimise
         self.cut_short = False
-        # (step, sorted zone keys) -> (best dead minutes from here or None, zone key chosen)
-        self.memo: dict[tuple[int, tuple[_ZoneKey, ...]], tuple[int | None, _ZoneKey | None]] = {}
+
+        # Slots that matter for "can the rest still fit?" at step k: from its start time on.
+        self.future = [window_mask(slot_index(s.start), SLOTS_PER_DAY) for s in self.floating]
+        # settled[k] = slots before this index are settled once session k is about to be placed.
+        # A slot can be affected by anything up to a route's length plus the reset time after it.
+        reach = LONGEST_ROUTE_SLOTS + reset // GRID
+        self.settled = [max(0, slot_index(s.start) - reach + 1) for s in self.floating]
+        self.settled.append(SLOTS_PER_DAY)  # after the last session, everything is settled
+        # Slots that matter for counting dead slots from step k on.
+        self.relevant = [
+            window_mask(first - LONGEST_ROUTE_SLOTS + 1, SLOTS_PER_DAY) for first in self.settled
+        ]
+
+        # _can_finish memory: key -> index of the first route that works, or -1 if none does.
+        self.finish_memo: dict[_Key, int] = {}
+        # _best memory: key -> (fewest dead slots from here, index of the route that gives it),
+        # or (a lower bound, NOT_EXACT) if the search only learnt "no better than that".
+        self.best_memo: dict[_Key, tuple[int, int]] = {}
 
     def run(self) -> tuple[int, dict[str, str]] | None:
-        start: _State = tuple((OPEN, 0) for _ in self.zones)
-        cost = self._best(0, start)
-        if cost is None:
+        """(dead slots, route per floating session), or None if nothing fits."""
+        if not self._can_finish(0, self.start_state):
             return None
-        return cost, self._read_plan(start)
+        if not self.optimise:
+            route_of, (visits, resets) = self._read_plan(self._first_choice)
+            dead = dead_mask(visits, resets, self.blocked, self.reset, 0, SLOTS_PER_DAY)
+            return dead.bit_count(), route_of
+        already_dead = self._dead_between(self.start_state, 0, self.settled[0])
+        rest = self._best(0, self.start_state)
+        route_of, _ = self._read_plan(self._best_choice)
+        return already_dead + rest, route_of
 
-    # --- the search ---------------------------------------------------------------------------
+    # --- can the rest still fit? ----------------------------------------------------------------
 
-    def _best(self, step: int, state: _State) -> int | None:
-        """Fewest dead minutes for placing floating[step:] onwards, or None if impossible."""
-        memo_key = (step, self._key(state))
-        if memo_key in self.memo:
-            return self.memo[memo_key][0]
-
+    def _can_finish(self, step: int, state: _State) -> bool:
+        """True if floating[step:] can all be placed, starting from `state`."""
         if step == len(self.floating):
-            result: int | None = self._finish_cost(state)
-            self.memo[memo_key] = (result, None)
-            return result
+            return True
+        key = _key(step, state, self.future[step])
+        if key not in self.finish_memo:
+            self.finish_memo[key] = -1
+            visits, resets = state
+            taken = visits | resets | self.blocked
+            for choice, (_, place) in enumerate(self.options[step]):
+                after = (visits | place.visits, resets | place.resets)
+                if fits(place, visits, taken) and self._can_finish(step + 1, after):
+                    self.finish_memo[key] = choice
+                    break
+        return self.finish_memo[key] >= 0
 
-        session = self.floating[step]
-        reached, reach_cost = self._advance(state, session.start)
-        best_cost: int | None = None
-        best_choice: _ZoneKey | None = None
-        tried: set[_ZoneKey] = set()
+    # --- the fewest dead slots --------------------------------------------------------------
 
-        for zone in self._zones_to_try(reached, session):
-            choice = self._zone_key(zone, reached[zone])
-            if choice in tried:
-                continue  # an identical zone was already tried
-            tried.add(choice)
-            rest = self._best(step + 1, self._place(reached, zone, session))
-            if rest is None:
+    def _best(self, step: int, state: _State, limit: int = NO_LIMIT) -> int:
+        """Fewest dead slots still to be counted when placing floating[step:].
+
+        Only plans with fewer than `limit` dead slots are of interest (the caller already has
+        a plan that good). If there is none, the answer is just some number >= `limit`: a
+        lower bound, not the exact minimum. Only called for states where `_can_finish` is
+        true, so there is always some plan.
+        """
+        if step == len(self.floating):
+            return 0
+        key = _key(step, state, self.relevant[step])
+        if key in self.best_memo:
+            value, choice = self.best_memo[key]
+            if choice >= 0 or value >= limit:
+                return value  # exact, or a lower bound that already rules this state out
+        if self.budget is not None and self.budget.expired():
+            self.cut_short = True
+            return self._finish_quickly(step, state)
+
+        # Slots that are dead now and lie before this session's start stay dead: everything
+        # placed from here on starts later. So we must pay at least this much.
+        lowest_possible = self._dead_between(
+            state, self.settled[step], slot_index(self.floating[step].start)
+        )
+        if lowest_possible >= limit:
+            self.best_memo[key] = (lowest_possible, NOT_EXACT)
+            return lowest_possible
+
+        visits, resets = state
+        taken = visits | resets | self.blocked
+        best: tuple[int, int] | None = None
+        bound = limit  # we only want plans better than this
+        lowest_rejected = NO_LIMIT  # the cheapest plan seen that wasn't better than `bound`
+
+        for choice, (_, place) in enumerate(self.options[step]):
+            after = (visits | place.visits, resets | place.resets)
+            if not fits(place, visits, taken) or not self._can_finish(step + 1, after):
                 continue
-            gap_cost = dead_minutes_in_gap(
-                reached[zone][0], session.start, ends_at_session=True, settings=self.settings
-            )
-            if best_cost is None or gap_cost + rest < best_cost:
-                best_cost, best_choice = gap_cost + rest, choice
-            if not self.optimise:
-                break
+            dead_now = self._dead_between(after, self.settled[step], self.settled[step + 1])
+            if dead_now >= bound:
+                lowest_rejected = min(lowest_rejected, dead_now)
+                continue
+            cost = dead_now + self._best(step + 1, after, bound - dead_now)
+            if cost < bound:
+                best = (cost, choice)
+                bound = cost
+                if cost <= lowest_possible:
+                    break  # can't do better than the slots already lost
+            else:
+                lowest_rejected = min(lowest_rejected, cost)
             if self.budget is not None and self.budget.expired():
                 self.cut_short = True
                 break
 
-        result = None if best_cost is None else reach_cost + best_cost
-        self.memo[memo_key] = (result, best_choice)
-        return result
+        if best is None:
+            # Nothing beat `limit`; remember how good it could get at best.
+            self.best_memo[key] = (lowest_rejected, NOT_EXACT)
+            return lowest_rejected
+        self.best_memo[key] = best
+        return best[0]
 
-    def _zones_to_try(self, state: _State, session: Session) -> list[int]:
-        """Zones the session fits in, tightest fit first (smallest gap before it)."""
-        fitting = [z for z in range(len(self.zones)) if self._fits(state, z, session)]
-        return sorted(fitting, key=lambda z: (-state[z][0], z))
+    def _finish_quickly(self, step: int, state: _State) -> int:
+        """Out of time: take the first route that fits at every step, count dead slots once."""
+        visits, resets = state
+        for later in range(step, len(self.floating)):
+            choice = self.finish_memo[_key(later, (visits, resets), self.future[later])]
+            _, place = self.options[later][choice]
+            visits |= place.visits
+            resets |= place.resets
+        return self._dead_between((visits, resets), self.settled[step], SLOTS_PER_DAY)
 
-    def _fits(self, state: _State, zone: int, session: Session) -> bool:
-        free_from, next_block = state[zone]
-        if free_from > session.start:
-            return False
-        blocks = self.blocks[zone]
-        if next_block < len(blocks):
-            end = occupancy_end(session.start, session.minutes, self.settings)
-            return end <= blocks[next_block].start
-        return True
+    def _dead_between(self, state: _State, first_slot: int, last_slot: int) -> int:
+        """Number of dead slots from `first_slot` up to `last_slot`, in every zone."""
+        if last_slot <= first_slot:
+            return 0
+        visits, resets = state
+        dead = dead_mask(visits, resets, self.blocked, self.reset, first_slot, last_slot)
+        return dead.bit_count()
 
-    def _place(self, state: _State, zone: int, session: Session) -> _State:
-        end = occupancy_end(session.start, session.minutes, self.settings)
-        new_zone: _ZoneState = (round_up_to_grid(end), state[zone][1])
-        return (*state[:zone], new_zone, *state[zone + 1 :])
+    # --- reading the answer -------------------------------------------------------------------
 
-    def _advance(self, state: _State, time: int) -> tuple[_State, int]:
-        """Move all zones forward to `time`.
+    def _first_choice(self, step: int, state: _State) -> int:
+        """The first route that lets the rest fit (remembered by `_can_finish`)."""
+        return self.finish_memo[_key(step, state, self.future[step])]
 
-        Fixed blocks starting at or before `time` become part of each zone's past. The gaps in
-        front of them can no longer change, so their dead minutes are counted now.
+    def _best_choice(self, step: int, state: _State) -> int:
+        """The route `_best` chose, or the first one that fits if it ran out of time there."""
+        key = _key(step, state, self.relevant[step])
+        if key in self.best_memo and self.best_memo[key][1] >= 0:
+            return self.best_memo[key][1]
+        return self._first_choice(step, state)
+
+    def _read_plan(self, choose: Callable[[int, _State], int]) -> tuple[dict[str, str], _State]:
+        """Walk the remembered choices to get a route for every floating session.
+
+        Returns the routes and the final occupied slots.
         """
-        cost = 0
-        new_state: list[_ZoneState] = []
-        for zone, (free_from, next_block) in enumerate(state):
-            blocks = self.blocks[zone]
-            while next_block < len(blocks) and blocks[next_block].start <= time:
-                block = blocks[next_block]
-                cost += dead_minutes_in_gap(
-                    free_from, block.start, ends_at_session=block.is_session, settings=self.settings
-                )
-                free_from = max(free_from, round_up_to_grid(block.end))
-                next_block += 1
-            new_state.append((free_from, next_block))
-        return tuple(new_state), cost
-
-    def _finish_cost(self, state: _State) -> int:
-        """Dead minutes left in every zone once all floating sessions are placed."""
-        reached, cost = self._advance(state, CLOSE)
-        for free_from, _ in reached:
-            cost += dead_minutes_in_gap(
-                free_from, CLOSE, ends_at_session=False, settings=self.settings
-            )
-        return cost
-
-    # --- helpers ------------------------------------------------------------------------------
-
-    def _zone_key(self, zone: int, zone_state: _ZoneState) -> _ZoneKey:
-        free_from, next_block = zone_state
-        return (free_from, self.remaining[zone][next_block])
-
-    def _key(self, state: _State) -> tuple[_ZoneKey, ...]:
-        return tuple(sorted(self._zone_key(z, zs) for z, zs in enumerate(state)))
-
-    def _read_plan(self, state: _State) -> dict[str, str]:
-        """Walk the remembered choices to get a zone for every floating session."""
-        zone_of: dict[str, str] = {}
+        route_of: dict[str, str] = {}
+        visits, resets = self.start_state
         for step, session in enumerate(self.floating):
-            _, choice = self.memo[(step, self._key(state))]
-            reached, _ = self._advance(state, session.start)
-            zone = next(
-                z for z in range(len(self.zones)) if self._zone_key(z, reached[z]) == choice
-            )
-            zone_of[session.id] = self.zones[zone]
-            state = self._place(reached, zone, session)
-        return zone_of
+            choice = choose(step, (visits, resets))
+            route, place = self.options[step][choice]
+            route_of[session.id] = route
+            visits |= place.visits
+            resets |= place.resets
+        return route_of, (visits, resets)
+
+
+def _key(step: int, state: _State, keep: int) -> _Key:
+    """The memory key for a state: only the slots in `keep` are remembered."""
+    visits, resets = state
+    return (step, visits & keep, resets & keep)
+
+
+def _touches(place: Footprint, avoid: int) -> bool:
+    """True if a route visits or resets any slot in `avoid`."""
+    return (place.visits | place.resets) & avoid != 0
+
+
+def _route_options(session: Session, reset: int, avoid: int) -> list[tuple[str, Footprint]]:
+    """The routes a floating session may take, with the slots each one takes.
+
+    Routes that touch a slot in `avoid` are left out.
+    """
+    options: list[tuple[str, Footprint]] = []
+    for route in ROUTES[session.ticket_type]:
+        place = footprint(session.start, session.ticket_type, route, reset)
+        if not _touches(place, avoid):
+            options.append((route, place))
+    return options

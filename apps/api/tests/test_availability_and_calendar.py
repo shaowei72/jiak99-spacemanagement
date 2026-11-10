@@ -48,27 +48,31 @@ def test_board_matches_the_sales_board_of_the_cli(
     assert board["people"] == 12
     assert board["closed"] is False
     assert [t["code"] for t in board["ticketTypes"]] == [
+        "TINGKAT",
         "CLASSIC",
         "CLASSIC_CT",
         "PREMIUM",
         "PREMIUM_CT",
     ]
-    assert board["ticketTypes"][3]["label"] == "PHE+CT"
-    assert board["ticketTypes"][3]["minutes"] == 180
+    assert board["ticketTypes"][4]["label"] == "PHE+CT"
+    assert board["ticketTypes"][4]["minutes"] == 180
     # Same rows as `uv run check 2026-12-01 11:00 PREMIUM 12 --board sales`.
-    assert set(statuses(board, "09:00").values()) == {"full"}
+    assert set(statuses(board, "09:30").values()) == {"full"}
     assert set(statuses(board, "11:00").values()) == {"available"}
-    assert len(board["rows"]) == 22  # 09:00 to 19:30
+    assert len(board["rows"]) == 24  # 09:00 to 20:30
 
 
 def test_board_marks_ticket_types_that_run_past_closing(client: TestClient) -> None:
     board = client.get("/api/availability", params={"date": DATE, "n": 4}).json()
     assert statuses(board, "19:30") == {
+        "TINGKAT": "available",
         "CLASSIC": "available",
-        "CLASSIC_CT": "available",
+        "CLASSIC_CT": "available",  # 19:30 + 1.5 h ends at 21:00
         "PREMIUM": "not_offered",  # 19:30 + 2 h is after 21:00
         "PREMIUM_CT": "not_offered",
     }
+    assert statuses(board, "20:30")["TINGKAT"] == "available"
+    assert statuses(board, "20:30")["CLASSIC"] == "not_offered"
 
 
 def test_board_follows_new_bookings(client: TestClient) -> None:

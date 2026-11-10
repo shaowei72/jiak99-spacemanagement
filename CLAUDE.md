@@ -1,7 +1,9 @@
 # CLAUDE.md
 
-Zone capacity app for an F&B attraction: 4 identical zones × 25 people, 4 ticket types (Classic, Classic + Chef's
-Table, Premium, Premium + Chef's Table; 1.5–3 h), Outlook (Microsoft 365) as the user layer. **Read `SPEC.md` before any work — it is the contract.**
+Zone capacity app for an F&B attraction: 4 zones × 25 people, each zone with its own activity (A Tour/Exhibit,
+B Dining, C Chef's Table / Dining, D Sandart). Each group moves through several zones in 30-min steps (its route);
+5 ticket types (Tingkat Meals, Classic, Classic + Chef's Table, Premium, Premium + Chef's Table; 30 min–3 h).
+Outlook (Microsoft 365) is the user layer. **Read `SPEC.md` before any work — it is the contract.**
 
 ## How to work here
 - Build in the milestone order in `SPEC.md` §6. Finish one milestone (tests green) before starting the next.
@@ -12,10 +14,10 @@ Table, Premium, Premium + Chef's Table; 1.5–3 h), Outlook (Microsoft 365) as t
   give public functions short docstrings.
 - The acceptance tests in `SPEC.md` §7 are mandatory. Write them first, then make them pass.
 - Business rules in `SPEC.md` §2 are fixed; settings marked "default" must stay configurable.
-- Ticket types are identified by their codes (`CLASSIC`, `CLASSIC_CT`, `PREMIUM`, `PREMIUM_CT`) everywhere in code
+- Ticket types are identified by their codes (`TINGKAT`, `CLASSIC`, `CLASSIC_CT`, `PREMIUM`, `PREMIUM_CT`) everywhere in code
   and data. Product names are display-only (`TICKET_NAMES` / `TICKET_SHORT_NAMES` in `engine/rules.py`).
 - No hold state. An enquiry is either booked or nothing is stored.
-- No sharing. A zone taken by a group is sold out for that time slot, whatever the group size.
+- No sharing. A 30-min slot of a zone holds one group at most, whatever the group size.
 - Never call the real Microsoft Graph unless `GRAPH_MODE=real`. Use the fake gateway for dev and tests.
 - Do not change the tenant, mailboxes or permissions yourself; list what the admin must do in `README.md`.
 - Record any deviation from `SPEC.md` (stack, rule interpretation) in `DECISIONS.md` with a one-line reason.

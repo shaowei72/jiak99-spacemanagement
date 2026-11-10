@@ -20,7 +20,7 @@ CUSTOMER = {
 
 
 def fill_slot(client: TestClient, start: str) -> None:
-    """Book all 4 zones on 2026-12-01 at `start` (PREMIUM, 25 each)."""
+    """Fill every zone for 2 h on 2026-12-01 from `start` (four PREMIUM groups of 25)."""
     for name in ("A", "B", "C", "D"):
         booking = {
             "date": "2026-12-01",
@@ -133,12 +133,12 @@ def test_customer_name_is_required(client: TestClient) -> None:
 
 
 def test_no_longer_fits_shows_why_and_fresh_alternatives(client: TestClient) -> None:
-    fill_slot(client, "09:00")  # someone else took the last zones meanwhile
+    fill_slot(client, "09:00")  # someone else took the last zone slots meanwhile
     response = client.post("/enquiry/book", data=CUSTOMER, headers=HTMX)
     assert response.status_code == 409
     assert "No longer fits" in response.text
     assert "Not possible" not in response.text
-    assert "All 4 zones are in use" in response.text
+    assert "Zones A, B, C and D are in use" in response.text
     assert "/enquiry/book?" in response.text  # alternatives can be booked straight away
     assert bookings_on(client, "2026-12-01") == 4  # only the 4 that filled the slot
 

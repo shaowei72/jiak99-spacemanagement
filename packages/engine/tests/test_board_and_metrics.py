@@ -12,7 +12,8 @@ from engine import (
     seat_hour_use,
     zone_hour_use,
 )
-from engine_helpers import DEFAULTS, TODAY, schedule, session, t
+from engine.rules import TicketType
+from engine_helpers import DEFAULTS, TODAY, pinned, schedule, session, t
 
 
 def slot_at(board: tuple[Slot, ...], start: str, ticket_type: str) -> Slot:
@@ -20,34 +21,33 @@ def slot_at(board: tuple[Slot, ...], start: str, ticket_type: str) -> Slot:
 
 
 def test_board_shows_available_full_and_not_offered() -> None:
-    # Four zones taken at 14:00 by groups of just 1 person: the slot is sold out all the same.
+    # Four groups of just 1 person at 14:00 fill every zone slot to 16:00: sold out all the same.
     day = schedule(
         session("11:00", "PREMIUM", 20),
-        *(session("14:00", "PREMIUM_CT", 1) for _ in range(4)),
+        *(session("14:00", "PREMIUM", 1) for _ in range(4)),
     )
     board = availability(day, DEFAULTS, TODAY, 4, today=TODAY)
 
-    assert len(board) == 22 * 4  # start times × ticket types
+    assert len(board) == 24 * 5  # start times × ticket types
     assert slot_at(board, "11:00", "PREMIUM") == Slot(t("11:00"), "PREMIUM", "available")
     assert slot_at(board, "09:00", "CLASSIC").status == "available"
     assert slot_at(board, "15:00", "CLASSIC").status == "full"
+    assert slot_at(board, "15:00", "TINGKAT").status == "full"
     assert slot_at(board, "19:30", "PREMIUM").status == "not_offered"
+    assert slot_at(board, "20:30", "CLASSIC").status == "not_offered"
+    assert slot_at(board, "20:30", "TINGKAT").status == "available"
 
 
-def test_board_for_a_big_group_needs_enough_free_zones() -> None:
-    day = schedule(*(session("10:00", "PREMIUM_CT", 1) for _ in range(3)))
-    assert (
-        slot_at(availability(day, DEFAULTS, TODAY, 25, today=TODAY), "10:00", "PREMIUM").status
-        == "available"
-    )
-    assert (
-        slot_at(availability(day, DEFAULTS, TODAY, 26, today=TODAY), "10:00", "PREMIUM").status
-        == "full"
-    )
+def test_board_for_a_big_group_needs_a_route_per_sub_group() -> None:
+    day = schedule(*(session("10:00", "PREMIUM", 1) for _ in range(3)))
+    board_25 = availability(day, DEFAULTS, TODAY, 25, today=TODAY)
+    board_26 = availability(day, DEFAULTS, TODAY, 26, today=TODAY)
+    assert slot_at(board_25, "10:00", "PREMIUM").status == "available"
+    assert slot_at(board_26, "10:00", "PREMIUM").status == "full"
 
 
 def test_metrics_of_a_full_morning() -> None:
-    prices = {
+    prices: dict[TicketType, Price] = {
         "CLASSIC": Price(1000, 500),
         "PREMIUM": Price(2000, 1000),
         "PREMIUM_CT": Price(3000, 1500),
@@ -64,8 +64,9 @@ def test_metrics_of_a_full_morning() -> None:
 
 def test_metrics_with_prices_for_some_ticket_types_only() -> None:
     day = schedule(session("09:00", "PREMIUM", 10), session("09:00", "CLASSIC", 10))[TODAY]
-    metrics = day_metrics(day, Settings(prices={"PREMIUM": Price(2000, 1000)}))
-    assert metrics.revenue_per_zone_hour_cents == pytest.approx(10 * 2000 / 3.5)
+    premium_only: dict[TicketType, Price] = {"PREMIUM": Price(2000, 1000)}
+    metrics = day_metrics(day, Settings(prices=premium_only))
+    assert metrics.revenue_per_zone_hour_cents == pytest.approx(10 * 2000 / 3)
 
 
 def test_metrics_of_an_empty_day() -> None:
@@ -78,8 +79,8 @@ def test_metrics_of_an_empty_day() -> None:
 
 def test_metrics_of_a_day_with_clashing_pins() -> None:
     clash = schedule(
-        session("09:00", "PREMIUM_CT", 5, zone="A", pinned=True),
-        session("10:00", "CLASSIC", 5, zone="A", pinned=True),
+        pinned("09:00", "PREMIUM_CT", "ABCD"),
+        pinned("09:00", "CLASSIC", "AD"),  # both in A at 09:00
     )[TODAY]
     assert day_metrics(clash, DEFAULTS).dead_gap_hours is None
 
@@ -87,6 +88,6 @@ def test_metrics_of_a_day_with_clashing_pins() -> None:
 def test_usage_without_the_full_metrics() -> None:
     """The 6-month calendar uses these two alone (no zone plan needed)."""
     day = schedule(session("09:00", "PREMIUM_CT", 25), session("12:00", "CLASSIC", 10))[TODAY]
-    assert seat_hour_use(day.sessions) == pytest.approx((25 * 3 + 10 * 1.5) / 1200)
-    assert zone_hour_use(day.sessions) == pytest.approx(4.5 / 48)
+    assert seat_hour_use(day.sessions) == pytest.approx((25 * 3 + 10 * 1) / 1200)
+    assert zone_hour_use(day.sessions) == pytest.approx(4 / 48)
     assert seat_hour_use(()) == 0
