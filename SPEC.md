@@ -350,9 +350,11 @@ Sync rules:
     (case-insensitive, tolerant of spacing; `[Classic CT]`, `[classic-ct]`, `[CLASSIC_CT]` all mean `CLASSIC_CT`).
     Date = event date. Sales keep typing this format; the app then rewrites the subject into the format above.
   - Parsed and fits → create booking, attach extension, normalise the event's times/subject.
-  - Parsed but does not fit → do not create; set category "Conflict" and email the creator with the check
-    result and alternatives.
-  - Unparseable → category "Needs format", email the creator with the expected format.
+  - Parsed but does not fit → do not create; set category "Conflict" and put the check result and
+    alternatives at the top of the event body (above what sales typed, which is kept).
+  - Unparseable → category "Needs format" and put the expected format at the top of the event body.
+  - No email is sent: sales see these categories and notes in the calendar itself (the app has calendar
+    access only).
   - Event with our extension edited or deleted in Outlook → treat as edit / cancel (re-check edits).
 - There is no hold state (§2). The one-off migration below turns existing soft blocks into confirmed bookings.
 
