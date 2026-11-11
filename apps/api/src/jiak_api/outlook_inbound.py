@@ -55,6 +55,7 @@ from jiak_api.outlook_sync import (
     record_error,
     record_ok,
     sync_dates,
+    sync_paused,
     waiting_dates,
 )
 
@@ -403,7 +404,10 @@ def bookings_not_written(db: Session, today: str) -> list[str]:
 
 
 def sweep(database: Database, gateway: GraphGateway, now: Now) -> SweepResult:
-    """One sweep (module docstring). Raises if Outlook can't be read; the caller records it."""
+    """One sweep (module docstring). Raises if Outlook can't be read; the caller records it.
+    Does nothing while Outlook sync is paused after a restore (SPEC §5.6)."""
+    if sync_paused(database):
+        return SweepResult()
     check_calendar(database, gateway)
     with database.make_session() as db:
         to_write = set(waiting_dates(db)) | set(bookings_not_written(db, now.today))

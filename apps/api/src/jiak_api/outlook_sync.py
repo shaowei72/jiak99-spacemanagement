@@ -149,6 +149,13 @@ def record_error(database: Database, message: str) -> None:
         db.commit()
 
 
+def sync_paused(database: Database) -> bool:
+    """True after `uv run restore` until the owner resumes Outlook sync (SPEC §5.6)."""
+    with database.make_session() as db:
+        state = db.get(models.OutlookState, 1)
+        return state is not None and state.sync_paused
+
+
 def mark_waiting(database: Database, dates: Iterable[str]) -> None:
     """Note dates whose bookings still have to be written to Outlook."""
     with database.make_session() as db:
@@ -240,6 +247,8 @@ def sync_dates(database: Database, gateway: GraphGateway, dates: Iterable[str]) 
     wanted = sorted(set(dates))
     if not wanted:
         return True
+    if sync_paused(database):
+        return True  # after a restore: nothing is written until the owner resumes (the dates wait)
     all_worked = True
     try:
         check_calendar(database, gateway)

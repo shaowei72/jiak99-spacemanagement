@@ -25,6 +25,7 @@ from jiak_api.db import Database
 WAITING_WARN_MINUTES = 10  # changes not written to Outlook for this long -> warning
 NOT_READ_WARN_MINUTES = 30  # Outlook not read for this long (while the sweep is on) -> warning
 SECRET_WARN_DAYS = 30  # warn this many days before the app's Outlook secret expires
+BACKUP_WARN_HOURS = 2  # no backup for this long (while backups are on) -> warning
 
 router = APIRouter()
 
@@ -38,6 +39,8 @@ class OutlookHealth:
     last_read_ok: datetime | None
     last_error: str
     waiting_since: datetime | None
+    sync_paused: bool = False  # after a restore, until the owner resumes (SPEC §5.6)
+    last_backup_ok: datetime | None = None
 
 
 def local_time(moment: datetime, now: datetime) -> str:
@@ -60,9 +63,11 @@ def outlook_health(
     *,
     sweep_on: bool,
     secret_expires: str | None = None,
+    backups_on: bool = False,
 ) -> OutlookHealth:
-    """The warning to show, if any (SPEC §5.4). `now` is the current UTC time; `sweep_on` says
-    whether this app reads Outlook regularly; `secret_expires` is AZURE_CLIENT_SECRET_EXPIRES."""
+    """The warning to show, if any (SPEC §5.4, §5.6). `now` is the current UTC time; `sweep_on`
+    says whether this app reads Outlook regularly; `secret_expires` is AZURE_CLIENT_SECRET_EXPIRES;
+    `backups_on` whether this app makes hourly backups (JIAK_BACKUP_DIR)."""
     state = db.get(models.OutlookState, 1)
     write_ok = state.last_write_ok if state else None
     read_ok = state.last_read_ok if state else None
@@ -71,8 +76,15 @@ def outlook_health(
     waiting_since = db.scalar(select(func.min(models.OutlookPending.since)))
 
     warnings: list[str] = []
+    paused = state is not None and state.sync_paused
     last_ok = latest(write_ok, read_ok)
-    if error_at is not None and (last_ok is None or error_at > last_ok):
+    if paused:
+        restored_from = state.restored_from if state else ""
+        warnings.append(
+            f"Restored from backup {restored_from}: Outlook sync is paused until you check the "
+            "after-restore list."
+        )
+    elif error_at is not None and (last_ok is None or error_at > last_ok):
         if last_ok is None:
             warnings.append(f"Outlook not reached yet: {error}")
         else:
@@ -87,6 +99,18 @@ def outlook_health(
         and now - read_ok > timedelta(minutes=NOT_READ_WARN_MINUTES)
     ):
         warnings.append(f"Outlook not read since {local_time(read_ok, now)}.")
+
+    backup = db.get(models.BackupState, 1)
+    last_backup_ok = backup.last_ok if backup else None
+    if backups_on and backup is not None:
+        if backup.last_error_at is not None and (
+            last_backup_ok is None or backup.last_error_at > last_backup_ok
+        ):
+            warnings.append(f"{backup.last_error}.")
+        elif last_backup_ok is not None and now - last_backup_ok > timedelta(
+            hours=BACKUP_WARN_HOURS
+        ):
+            warnings.append(f"No backup since {local_time(last_backup_ok, now)}.")
 
     if secret_expires:
         today = now.astimezone(SINGAPORE).strftime("%Y-%m-%d")
@@ -107,6 +131,8 @@ def outlook_health(
         last_read_ok=read_ok,
         last_error=error,
         waiting_since=waiting_since,
+        sync_paused=paused,
+        last_backup_ok=last_backup_ok,
     )
 
 
@@ -119,6 +145,7 @@ def health_of(request: Request) -> OutlookHealth:
             models.utc_now(),
             sweep_on=request.app.state.sweep_minutes > 0,
             secret_expires=request.app.state.secret_expires,
+            backups_on=request.app.state.backup_dir is not None,
         )
 
 
@@ -128,7 +155,10 @@ def outlook_status(request: Request) -> HTMLResponse:
     health = health_of(request)
     if not health.warning:
         return HTMLResponse("", headers={"Cache-Control": "no-store"})
-    banner = f'<div class="banner" role="alert">{escape(health.warning)}</div>'
+    link = ""
+    if health.sync_paused:
+        link = ' <a href="/restore-check">Open the after-restore list</a>'
+    banner = f'<div class="banner" role="alert">{escape(health.warning)}{link}</div>'
     return HTMLResponse(banner, headers={"Cache-Control": "no-store"})
 
 
@@ -157,5 +187,7 @@ def api_health(request: Request) -> JSONResponse:
         "lastReadOk": iso(health.last_read_ok),
         "lastError": health.last_error,
         "waitingSince": iso(health.waiting_since),
+        "syncPaused": health.sync_paused,
+        "lastBackupOk": iso(health.last_backup_ok),
     }
     return JSONResponse(body, status_code=200 if not health.warning else 503)

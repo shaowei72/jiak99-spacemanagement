@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}After restore{% endblock %}
+{% block content %}
+<h1>After restore</h1>
+
+{% if not paused %}
+<p>Outlook sync is on. Nothing to check here.</p>
+<p class="detail">This page lists what differs between Outlook and the database after
+<code>uv run restore</code> (SPEC §5.6).</p>
+{% else %}
+<p>The app was restored from <strong>{{ restored_from or "a backup" }}</strong>. Outlook sync is
+<strong>paused</strong>: nothing is written to Outlook or taken in from it until you resume.
+Outlook is newer than the backup, so check what differs, fix it in the app, then resume.</p>
+
+{% if error %}
+<p class="error">{{ error }}</p>
+{% elif listing is not none %}
+
+<h2>1. Booked after the backup ({{ listing.unknown | length }})</h2>
+<p class="detail">In Outlook but not in the app. Book each one in <a href="/enquiry">Check and book</a>,
+then delete its old event in Outlook.</p>
+{% for d in listing.unknown %}<p>{{ d.when }} · {{ d.name }}</p>{% else %}<p class="detail">None.</p>{% endfor %}
+
+<h2>2. Event gone from Outlook ({{ listing.gone | length }})</h2>
+<p class="detail">Most likely cancelled after the backup. Cancel the booking, or leave it if it is
+still on (its event is made again when you resume).</p>
+{% for d in listing.gone %}<p>{{ d.when }} · <a href="/bookings/{{ d.booking_id }}">{{ d.name }}</a></p>{% else %}<p class="detail">None.</p>{% endfor %}
+
+<h2>3. Changed in Outlook ({{ listing.changed | length }})</h2>
+<p class="detail">Most likely changed after the backup. Edit the booking to match, or leave it (Outlook
+then shows the app's version again when you resume).</p>
+{% for d in listing.changed %}<p>{{ d.when }} · <a href="/bookings/{{ d.booking_id }}">{{ d.name }}</a>
+  <span class="detail">· {{ d.detail }}</span></p>{% else %}<p class="detail">None.</p>{% endfor %}
+
+<h2>4. Typed in Outlook ({{ listing.typed | length }})</h2>
+<p class="detail">For information: these are taken in as usual after you resume.</p>
+{% for d in listing.typed %}<p>{{ d.when }} · {{ d.name }}</p>{% else %}<p class="detail">None.</p>{% endfor %}
+
+<form method="post" action="/restore-check/resume">
+  <p class="detail">Resuming makes the app the truth again: every booking's Outlook event is written
+  afresh. Events from list 1 that are still there get the category "Not in app" (never deleted).</p>
+  <button class="button" type="submit">Resume Outlook sync</button>
+</form>
+{% endif %}
+{% endif %}
+{% endblock %}

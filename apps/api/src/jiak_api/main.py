@@ -17,19 +17,23 @@ from fastapi.staticfiles import StaticFiles
 from engine.dates import is_valid_date
 from graph.fake import FakeGateway
 from graph.gateway import GraphGateway
+from jiak_api.backup import backup_due, backup_now
 from jiak_api.booking_pages import router as booking_pages_router
 from jiak_api.bookings import NoLongerFits
 from jiak_api.clock import Now, singapore_now
 from jiak_api.config import load_config
 from jiak_api.db import Database
+from jiak_api.models import utc_now
 from jiak_api.ops_pages import router as ops_pages_router
 from jiak_api.outlook_health import router as outlook_health_router
 from jiak_api.outlook_inbound import sweep_and_record
 from jiak_api.outlook_sync import make_gateway
 from jiak_api.pages import router as pages_router
+from jiak_api.restore_pages import router as restore_pages_router
 from jiak_api.routes import no_longer_fits_handler, router
 
 STATIC = Path(__file__).parent / "static"
+BACKUP_CHECK_SECONDS = 300
 
 
 async def sweep_forever(
@@ -42,6 +46,15 @@ async def sweep_forever(
         await asyncio.sleep(minutes * 60)
 
 
+async def backup_forever(database: Database, folder: Path) -> None:
+    """Every 5 minutes: back up if the newest backup is an hour old (SPEC §5.6). Checking often
+    instead of sleeping an hour means a laptop that slept still gets its backup soon after waking."""
+    while True:
+        if backup_due(folder, utc_now()):
+            await anyio.to_thread.run_sync(backup_now, database, folder, utc_now())
+        await asyncio.sleep(BACKUP_CHECK_SECONDS)
+
+
 def create_app(
     database: Database,
     clock: Callable[[], Now] = singapore_now,
@@ -49,26 +62,35 @@ def create_app(
     sweep_minutes: float = 0,
     secret_expires: str | None = None,
     default_user: str = "dev",
+    backup_dir: str | None = None,
 ) -> FastAPI:
     """The app, using `database` and the Outlook calendar `gateway` (default: a new in-memory fake).
     Tests pass a test database, a fixed clock and, when they look at Outlook, their own fake.
     `sweep_minutes` > 0 reads Outlook when the app starts and then that often (0: never).
     `secret_expires` ('YYYY-MM-DD'): the warning banner reminds 30 days before it.
-    `default_user`: who changes are recorded under when no X-User header is sent (JIAK_USER)."""
+    `default_user`: who changes are recorded under when no X-User header is sent (JIAK_USER).
+    `backup_dir`: where hourly backups go (JIAK_BACKUP_DIR; SQLite only); None: no backups."""
     if secret_expires is not None and not is_valid_date(secret_expires):
         raise ValueError(
             f"AZURE_CLIENT_SECRET_EXPIRES must be a date like 2027-11-30, not {secret_expires!r}"
         )
     calendar = gateway if gateway is not None else FakeGateway()
+    backups = Path(backup_dir) if backup_dir and database.is_sqlite else None
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-        task = None
+        tasks: list[asyncio.Task[None]] = []
         if sweep_minutes > 0:
-            task = asyncio.create_task(sweep_forever(database, calendar, clock, sweep_minutes))
+            tasks.append(
+                asyncio.create_task(sweep_forever(database, calendar, clock, sweep_minutes))
+            )
+        if backups is not None:
+            tasks.append(asyncio.create_task(backup_forever(database, backups)))
         yield
-        if task is not None:
+        for task in tasks:
             task.cancel()
+        if backups is not None:  # one more copy when the app is closed normally
+            await anyio.to_thread.run_sync(backup_now, database, backups, utc_now())
 
     app = FastAPI(title="Jiak99 zone capacity", lifespan=lifespan)
     app.state.database = database
@@ -77,11 +99,13 @@ def create_app(
     app.state.sweep_minutes = sweep_minutes
     app.state.secret_expires = secret_expires
     app.state.default_user = default_user
+    app.state.backup_dir = backups
     app.include_router(router)
     app.include_router(pages_router)
     app.include_router(ops_pages_router)
     app.include_router(booking_pages_router)
     app.include_router(outlook_health_router)
+    app.include_router(restore_pages_router)
     app.mount("/static", StaticFiles(directory=STATIC), name="static")
     app.add_exception_handler(NoLongerFits, no_longer_fits_handler)
     return app
@@ -95,6 +119,7 @@ def _app_from_environment() -> FastAPI:
         sweep_minutes=config.sweep_minutes,
         secret_expires=config.secret_expires,
         default_user=config.default_user,
+        backup_dir=config.backup_dir,
     )
 
 

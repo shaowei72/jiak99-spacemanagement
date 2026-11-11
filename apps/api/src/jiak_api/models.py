@@ -191,6 +191,23 @@ class OutlookState(Base):
     last_read_ok: Mapped[datetime | None]
     last_error: Mapped[str] = mapped_column(default="")
     last_error_at: Mapped[datetime | None]
+    # After `uv run restore` (SPEC §5.6): nothing is written to or taken in from Outlook until the
+    # owner has gone through the after-restore list and pressed "Resume Outlook sync".
+    sync_paused: Mapped[bool] = mapped_column(default=False)
+    restored_from: Mapped[str] = mapped_column(String(300), default="")
+    restored_at: Mapped[datetime | None]
+
+
+class BackupState(Base):
+    """How the hourly backups are doing (SPEC §5.6). Only ever one row (id 1)."""
+
+    __tablename__ = "backup_state"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    last_ok: Mapped[datetime | None]
+    last_file: Mapped[str] = mapped_column(String(300), default="")
+    last_error: Mapped[str] = mapped_column(default="")
+    last_error_at: Mapped[datetime | None]
 
 
 class OutlookPending(Base):
