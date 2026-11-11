@@ -3,6 +3,7 @@
 These tests use the in-memory fake calendar; nothing talks to Microsoft.
 """
 
+from dataclasses import replace
 from typing import Any
 
 import pytest
@@ -141,29 +142,41 @@ def test_a_no_show_keeps_the_event_and_says_so(database: Database, calendar: Fak
     assert "Status: no-show" in only_event(calendar).body
 
 
-def test_a_deleted_event_is_made_again(
+def test_an_event_deleted_in_outlook_is_not_made_again(
     app_client: TestClient, calendar: FakeGateway, database: Database
 ) -> None:
+    """Deleting it in Outlook means cancel: the sweep does that (test_outlook_inbound.py)."""
     booking = book(app_client)
-    calendar.delete_event(only_event(calendar).id)
+    event_id = only_event(calendar).id
+    calendar.delete_event(event_id)
     sync_dates(database, calendar, [DATE])
-    event = only_event(calendar)
-    assert event.booking_id == booking["id"]
-    assert stored_event_id(database, booking["id"]) == event.id
+    assert calendar.events == {}
+    assert stored_event_id(database, booking["id"]) == event_id
 
 
-def test_an_event_changed_in_outlook_is_put_back(
+def test_an_event_changed_in_outlook_is_left_for_the_sweep(
     app_client: TestClient, calendar: FakeGateway, database: Database
 ) -> None:
     book(app_client)
     event = only_event(calendar)
-    calendar.events[event.id] = CalendarEvent(
+    changed = CalendarEvent(
         id=event.id, date=DATE, start=600, end=700, subject="typed over", created_by="sales@x"
     )
+    calendar.events[event.id] = changed
     sync_dates(database, calendar, [DATE])
-    restored = only_event(calendar)
-    assert restored.subject == event.subject
-    assert restored.created_by == "sales@x"  # Outlook's own detail is kept
+    assert only_event(calendar) == changed
+
+
+def test_outlook_details_are_kept_when_the_app_rewrites(
+    app_client: TestClient, calendar: FakeGateway, database: Database
+) -> None:
+    booking = book(app_client)
+    event = only_event(calendar)
+    calendar.events[event.id] = replace(event, body="edited", created_by="sales@x")
+    app_client.patch(f"/api/bookings/{booking['id']}", json={"notes": "Vegetarian x1"})
+    rewritten = only_event(calendar)
+    assert "Notes: Vegetarian x1" in rewritten.body
+    assert rewritten.created_by == "sales@x"  # Outlook's own detail is kept
 
 
 def test_the_web_pages_sync_too(app_client: TestClient, calendar: FakeGateway) -> None:

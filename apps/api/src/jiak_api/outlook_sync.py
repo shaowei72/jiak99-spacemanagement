@@ -1,13 +1,18 @@
 """Keeping the Bookings calendar in Outlook in step with the app (SPEC §5.4 "App → Outlook").
 
 After any change to a date (a booking made, edited, cancelled; the day planned, locked, a group
-pinned), the routes call `OutlookUpdates.dates_changed(date)`. Once the reply has been sent, every
-booking on that date is compared with its Outlook event and the event is created, rewritten or
-deleted to match. Doing a whole date at once is simple and also catches route changes of other groups.
+pinned), the routes call `OutlookUpdates.dates_changed(date)`. The date is noted as waiting, and
+once the reply has been sent every booking on that date is compared with its Outlook event and the
+event is created, rewritten or deleted to match. Doing a whole date at once is simple and also
+catches route changes of other groups.
 
 It is safe to run again at any time (idempotent): an event that already matches is left alone.
-If Outlook can't be reached, the booking itself still stands; the error is logged and the next
-sync of that date puts things right.
+If Outlook can't be reached, the booking itself still stands; the date stays waiting and the
+sweep (`outlook_inbound`) tries again every few minutes.
+
+Two things the sync leaves to the sweep, because a person did them in Outlook (SPEC §5.4):
+- an event the app wrote that is now gone (deleted in Outlook: the sweep cancels the booking);
+- an event whose date, times or subject changed since the app wrote it (the sweep re-checks it).
 """
 
 import logging
@@ -16,12 +21,12 @@ from dataclasses import replace
 from typing import Annotated, cast
 
 from fastapi import BackgroundTasks, Depends, Request
-from sqlalchemy import select
+from sqlalchemy import delete, select, update
 from sqlalchemy.orm import Session
 
 from engine.rules import TicketType
 from graph.fake import FakeGateway
-from graph.format import BookingInfo, booking_event
+from graph.format import BookingInfo, booking_event, kept_text, visible_state
 from graph.gateway import EventNotFound, GraphGateway
 from graph.model import CalendarEvent
 from jiak_api import models
@@ -74,7 +79,105 @@ def booking_info(booking: models.Booking) -> BookingInfo:
     )
 
 
+def wanted_event(booking: models.Booking, existing: CalendarEvent | None) -> CalendarEvent:
+    """The event the booking should have: the app's layout and note, plus the text kept from
+    before the app (if `existing` has any). Outlook's own details of `existing` are kept."""
+    if existing is None:
+        return booking_event(booking_info(booking), note=booking.outlook_note)
+    wanted = booking_event(
+        booking_info(booking), note=booking.outlook_note, kept=kept_text(existing)
+    )
+    return replace(
+        wanted,
+        id=existing.id,
+        created_by=existing.created_by,
+        ical_uid=existing.ical_uid,
+        created=existing.created,
+    )
+
+
+# --- the state of the Outlook link ---------------------------------------------------------------
+
+
+def outlook_state(db: Session) -> models.OutlookState:
+    """The one row describing the Outlook link (made on first use)."""
+    state = db.get(models.OutlookState, 1)
+    if state is None:
+        state = models.OutlookState(id=1, last_error="")
+        db.add(state)
+        db.flush()
+    return state
+
+
+def check_calendar(database: Database, gateway: GraphGateway) -> None:
+    """If the calendar isn't the one the stored event ids belong to (a new fake calendar, another
+    mailbox), forget what the app knew about its events: the next sync writes them all afresh,
+    and the sweep never mistakes them for events deleted in Outlook."""
+    current = gateway.calendar_id()
+    with database.make_session() as db:
+        state = outlook_state(db)
+        if state.calendar_id != current:
+            if state.calendar_id is not None:
+                log.warning(
+                    "Outlook calendar changed (%s -> %s): writing every event afresh",
+                    state.calendar_id,
+                    current,
+                )
+            db.execute(update(models.Booking).values(outlook_seen=None))
+            state.calendar_id = current
+        db.commit()
+
+
+def record_ok(database: Database, *, wrote: bool = False, read: bool = False) -> None:
+    """Note that writing to / reading from Outlook just worked."""
+    with database.make_session() as db:
+        state = outlook_state(db)
+        moment = models.utc_now()
+        if wrote:
+            state.last_write_ok = moment
+        if read:
+            state.last_read_ok = moment
+        db.commit()
+
+
+def record_error(database: Database, message: str) -> None:
+    """Note what went wrong last, for the warning banner."""
+    with database.make_session() as db:
+        state = outlook_state(db)
+        state.last_error = message[:500]
+        state.last_error_at = models.utc_now()
+        db.commit()
+
+
+def mark_waiting(database: Database, dates: Iterable[str]) -> None:
+    """Note dates whose bookings still have to be written to Outlook."""
+    with database.make_session() as db:
+        for date in set(dates):
+            if db.get(models.OutlookPending, date) is None:
+                db.add(models.OutlookPending(date=date))
+        db.commit()
+
+
+def waiting_dates(db: Session) -> list[str]:
+    """Dates noted as waiting (e.g. because Outlook couldn't be reached)."""
+    return list(db.scalars(select(models.OutlookPending.date).order_by(models.OutlookPending.date)))
+
+
 # --- syncing -----------------------------------------------------------------------------------
+
+
+def find_event(
+    gateway: GraphGateway, event_id: str, events_by_id: dict[str, CalendarEvent]
+) -> CalendarEvent | None:
+    """The event with this id: from the events already read, else asked for (it may be on
+    another date). None if it is gone."""
+    event = events_by_id.get(event_id)
+    if event is not None:
+        return event
+    try:
+        return gateway.get_event(event_id)
+    except EventNotFound:
+        return None
 
 
 def sync_booking(
@@ -83,7 +186,8 @@ def sync_booking(
     """Create, rewrite or delete the booking's Outlook event so it matches the booking.
 
     `events_by_id`: the events already read for the booking's date (saves one call per booking).
-    A cancelled booking's event is deleted. Stores the event id on the booking (caller commits).
+    A cancelled booking's event is deleted. Stores the event id and what the event shows on the
+    booking (caller commits). Leaves alone an event deleted or changed in Outlook (module docstring).
     """
     event_id = booking.outlook_event_id
 
@@ -94,38 +198,30 @@ def sync_booking(
             except EventNotFound:
                 pass  # already gone
             booking.outlook_event_id = None
+            booking.outlook_seen = None
         return
 
-    existing: CalendarEvent | None = None
-    if event_id is not None:
-        existing = events_by_id.get(event_id)
-        if existing is None:  # the booking moved here from another date, or the event is gone
-            try:
-                existing = gateway.get_event(event_id)
-            except EventNotFound:
-                existing = None
-
-    wanted = booking_event(booking_info(booking))
+    existing = find_event(gateway, event_id, events_by_id) if event_id is not None else None
     if existing is None:
-        created = gateway.create_event(wanted)
+        if event_id is not None and booking.outlook_seen is not None:
+            return  # the app wrote it and it is gone: deleted in Outlook, the sweep decides
+        created = gateway.create_event(wanted_event(booking, None))
         booking.outlook_event_id = created.id
+        booking.outlook_seen = visible_state(created)
         return
 
-    # Keep Outlook's own details (event id, who created it, its UID); everything else must match.
-    wanted = replace(
-        wanted,
-        id=existing.id,
-        created_by=existing.created_by,
-        ical_uid=existing.ical_uid,
-        created=existing.created,
-    )
+    if booking.outlook_seen is not None and visible_state(existing) != booking.outlook_seen:
+        return  # changed in Outlook since the app wrote it: the sweep decides
+
+    wanted = wanted_event(booking, existing)
     if wanted != existing:
         gateway.update_event(wanted)
+    booking.outlook_seen = visible_state(wanted)
 
 
 def sync_date(database: Database, db: Session, gateway: GraphGateway, date: str) -> None:
     """Bring every booking on `date` in step with Outlook. Holds the date lock while it works,
-    so a booking made at the same moment can't get two events."""
+    so a booking made at the same moment can't get two events. The date is no longer waiting."""
     with database.date_lock(db, date):
         events = gateway.list_events(date, date)
         events_by_id = {event.id: event for event in events}
@@ -134,20 +230,35 @@ def sync_date(database: Database, db: Session, gateway: GraphGateway, date: str)
         )
         for booking in rows:
             sync_booking(gateway, booking, events_by_id)
+        db.execute(delete(models.OutlookPending).where(models.OutlookPending.date == date))
         db.commit()
 
 
-def sync_dates(database: Database, gateway: GraphGateway, dates: Iterable[str]) -> None:
-    """Sync each date in its own transaction. A failure is logged and the other dates still sync."""
-    for date in sorted(set(dates)):
+def sync_dates(database: Database, gateway: GraphGateway, dates: Iterable[str]) -> bool:
+    """Sync each date in its own transaction. A failure is logged and recorded, the date stays
+    waiting, and the other dates still sync. Returns True if every date worked."""
+    wanted = sorted(set(dates))
+    if not wanted:
+        return True
+    all_worked = True
+    try:
+        check_calendar(database, gateway)
+    except Exception as error:
+        log.exception("Outlook sync failed: can't reach the calendar")
+        record_error(database, f"Writing to Outlook failed: {error}")
+        return False
+    for date in wanted:
         with database.make_session() as db:
             try:
                 sync_date(database, db, gateway, date)
-            except Exception:
+            except Exception as error:
                 db.rollback()
-                log.exception(
-                    "Outlook sync of %s failed; it will be retried on the next sync", date
-                )
+                all_worked = False
+                log.exception("Outlook sync of %s failed; the sweep will try again", date)
+                record_error(database, f"Writing {date} to Outlook failed: {error}")
+    if all_worked:
+        record_ok(database, wrote=True)
+    return all_worked
 
 
 # --- for the routes ----------------------------------------------------------------------------
@@ -162,7 +273,8 @@ class OutlookUpdates:
         self.background = background
 
     def dates_changed(self, *dates: str) -> None:
-        """Sync these dates after the reply (FastAPI background task)."""
+        """Note the dates as waiting, then sync them after the reply (FastAPI background task)."""
+        mark_waiting(self.database, dates)
         self.background.add_task(sync_dates, self.database, self.gateway, list(dates))
 
 

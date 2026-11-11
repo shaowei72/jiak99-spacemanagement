@@ -255,6 +255,7 @@ def test_commit_books_future_rows_and_keeps_past_ones_as_history(
     assert (event.start, event.end) == (660, 690)
     assert event.ical_uid == "uid-sunshine"
     assert event.created_by == "sales@example.com"
+    assert event.body.endswith("\n\n── Before the app ──\nForwarded email ...")  # old text kept
     # Events of rows that weren't booked keep their old subject.
     assert calendar.events["outlook-4"].subject == "[Confirmed] Hornbill Primary CHE 10 pax"
 

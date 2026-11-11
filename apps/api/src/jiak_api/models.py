@@ -86,6 +86,13 @@ class Booking(Base):
     # The iCalendar UID of the Outlook event this booking was taken over from (one-off take-over,
     # SPEC §5.4), so running the take-over again skips it. None for bookings made in the app.
     source_event_id: Mapped[str | None] = mapped_column(String(300), unique=True)
+    # What the Outlook event showed (date, times, subject) when the app last wrote or checked it.
+    # If the event no longer matches, someone changed it in Outlook (SPEC §5.4). None = not yet
+    # written to this calendar.
+    outlook_seen: Mapped[str | None] = mapped_column(String(600))
+    # A message from the app shown on top of the Outlook event (e.g. why an Outlook change wasn't
+    # made), with the "Conflict" category. Cleared when the booking is changed again.
+    outlook_note: Mapped[str] = mapped_column(default="")
     created_at: Mapped[datetime] = mapped_column(default=utc_now)
     updated_at: Mapped[datetime] = mapped_column(default=utc_now, onupdate=utc_now)
 
@@ -165,6 +172,41 @@ class PastBooking(Base):
     source_event_id: Mapped[str] = mapped_column(String(300), unique=True)
     original_subject: Mapped[str] = mapped_column(String(500))
     created_at: Mapped[datetime] = mapped_column(default=utc_now)
+
+
+class OutlookState(Base):
+    """How the Outlook link is doing (SPEC §5.4 "Outlook sync warning"). Only ever one row (id 1)."""
+
+    __tablename__ = "outlook_state"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    # Which calendar the stored event ids belong to (GraphGateway.calendar_id).
+    calendar_id: Mapped[str | None] = mapped_column(String(300))
+    last_write_ok: Mapped[datetime | None]
+    last_read_ok: Mapped[datetime | None]
+    last_error: Mapped[str] = mapped_column(default="")
+    last_error_at: Mapped[datetime | None]
+
+
+class OutlookPending(Base):
+    """A date whose bookings still have to be written to Outlook. Removed once that worked."""
+
+    __tablename__ = "outlook_pending"
+
+    date: Mapped[str] = mapped_column(String(10), primary_key=True)
+    since: Mapped[datetime] = mapped_column(default=utc_now)
+
+
+class OutlookFlag(Base):
+    """A hand-typed Outlook entry the app couldn't book and marked ("Conflict" or "Needs format").
+    It is looked at again only when its date, times or subject change."""
+
+    __tablename__ = "outlook_flags"
+
+    event_id: Mapped[str] = mapped_column(String(300), primary_key=True)
+    seen: Mapped[str] = mapped_column(String(600))  # graph.format.visible_state when marked
+    outcome: Mapped[str] = mapped_column(String(20))  # "Conflict" or "Needs format"
+    at: Mapped[datetime] = mapped_column(default=utc_now)
 
 
 class AuditLog(Base):

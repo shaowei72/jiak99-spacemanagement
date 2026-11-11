@@ -12,6 +12,7 @@ class AppConfig:
 
     database_url: str
     graph_mode: str = "fake"  # "real" only once the M365 admin steps in README.md are done
+    sweep_minutes: float = 5  # how often Outlook is read (SPEC §5.4); 0 = never (tests, tools)
 
 
 def load_config() -> AppConfig:
@@ -19,4 +20,5 @@ def load_config() -> AppConfig:
     return AppConfig(
         database_url=os.environ.get("DATABASE_URL", DEFAULT_DATABASE_URL),
         graph_mode=os.environ.get("GRAPH_MODE", "fake").strip().lower() or "fake",
+        sweep_minutes=float(os.environ.get("OUTLOOK_SWEEP_MINUTES", "5") or "5"),
     )

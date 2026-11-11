@@ -88,8 +88,13 @@ def create_booking(
     notes: str,
     actor: str,
     now: Now,
+    outlook_event_id: str | None = None,
 ) -> models.Booking:
-    """Book the enquiry if it still fits; otherwise raise NoLongerFits with a fresh check."""
+    """Book the enquiry if it still fits; otherwise raise NoLongerFits with a fresh check.
+
+    `outlook_event_id`: an existing Outlook event this booking takes over (a hand-typed entry),
+    linked in the same transaction so no second event is ever made for it.
+    """
     with database.date_lock(db, enquiry.date):
         result = check(db, enquiry, now)
         if result.verdict == "NOT_POSSIBLE":
@@ -111,6 +116,7 @@ def create_booking(
             status="confirmed",
             notes=notes,
             created_by=actor,
+            outlook_event_id=outlook_event_id,
         )
         booking.sessions.extend(new_sessions(enquiry))
         db.add(booking)
@@ -178,6 +184,7 @@ def edit_booking(
         db.flush()  # gives new sessions their ids, for the audit entry
         after = audit.booking_snapshot(booking)
         if after != before:  # nothing changed -> no audit entry
+            booking.outlook_note = ""  # an earlier note from the app no longer applies
             audit.record(
                 db,
                 actor=actor,
