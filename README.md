@@ -24,16 +24,15 @@ routes and judges waste: [docs/ENGINE.md](docs/ENGINE.md). Why the laptop runs S
 
 ## Status
 
-Done: Milestone 1 (the engine, `packages/engine`, plus a command-line tool), Milestone 2 (API + database),
-Milestone 3 (web pages: Check and book, Bookings, Day plan, 6-month calendar, settings) and Milestone 3R (the
-zone-route rules of SPEC v0.4, 2026-11-09).
+Done (SPEC v0.7 §6 has the full list): Milestone 1 (the engine, `packages/engine`, plus a command-line tool),
+Milestone 2 (API + database), Milestone 3 (web pages: Check and book, Bookings, Day plan, 6-month calendar,
+settings), Milestone 3R (the zone-route rules of SPEC v0.4), Milestone 4 (Outlook sync against the fake calendar:
+app → Outlook, the one-off take-over, Outlook → app with the fail-back, the warning banner and `/api/health`) and
+Milestone 4L (the owner's laptop: SQLite safeguards, backups and restore, Windows scripts, tests on GitHub).
+Milestones 4 and 4L are on branch `m4-outlook`, still to be merged into `main`.
 
-In progress: Milestone 4, Outlook sync (SPEC v0.6, branch `m4-outlook`). Done so far: the calendar package with a
-fake calendar (part 1), app → Outlook sync on every booking change (part 2), the take-over dry run that reads the
-existing `operations@` calendar into a review sheet (part 3), applying the corrected sheet: bookings, history and
-Outlook events taken over in place (part 4), and Outlook → app: hand-typed entries, changes and deletions made in
-Outlook, catching up after an outage, the Outlook warning banner and `/api/health` (part 5). Next: the real Microsoft
-Graph connection (part 6), then Milestone 4L (laptop go-live).
+Next: Milestone 5, live Outlook and go-live: the M365 admin's setup, the real Microsoft Graph connection (tested on
+a test mailbox first), the completed review sheet and the real take-over.
 
 **After pulling Milestone 3R:** run `uv run alembic upgrade head`. Stored zones can't become routes, so every
 existing group becomes unplanned (no route, not pinned) until the day is allocated again. Old example data may not

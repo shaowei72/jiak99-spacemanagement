@@ -1,11 +1,16 @@
-# Zone Capacity App — Build Spec (v0.6, for Claude Code)
+# Zone Capacity App — Build Spec (v0.7, for Claude Code)
 
+> **v0.7 (2026-11-11): milestones re-ordered.** Milestone 4 ends with everything that works against the fake
+> calendar. A new Milestone 5 (live Outlook and go-live) takes the real Graph gateway, the M365 admin's setup,
+> the completed review sheet and the real take-over. The cloud move becomes Milestone 6, Phase 2 becomes 7.
+> §6 shows each milestone's status. See `DECISIONS.md` 2026-11-11.
+>
 > **v0.6 (2026-11-11): app first, Outlook as the fall-back.** Sales book in the app (or the Outlook add-in).
 > Typing a booking into Outlook is the fall-back for when the app is down; the app takes those entries in when it is
 > back (fail-back). Staff keep edit rights on the calendar. Adds an Outlook sync warning and database backups.
 > The app runs on the owner's laptop first (one user, no sign-in yet, SQLite) and moves to the cloud later (§5.5), with
 > hourly backups and a restore path for a lost or broken laptop (§5.6). New Milestone 4L (laptop go-live); the
-> cloud move becomes Milestone 5 and takes in the Outlook add-in.
+> cloud move becomes Milestone 5 and takes in the Outlook add-in (Milestone 6 since v0.7).
 > See `DECISIONS.md` 2026-11-11, §5.4 "When the app is down", §5.5 and §5.6.
 >
 > **v0.5 (2026-11-10): Outlook calendars.** Bookings live in the main calendar of the existing `operations@` mailbox.
@@ -275,7 +280,7 @@ Each alternative carries `{ date, start, type, verdict, changeSummary, gainSumma
   Sales can).
 - `apps/outlook-addin`: the only non-Python part. A manifest plus a minimal HTML/TypeScript task-pane shell that
   loads the Enquiry check page from `apps/api`; Office.js used only to prefill from the open item. Node is
-  needed only for this, at Milestone 5.
+  needed only for this, at Milestone 6.
 - Docker Compose for local dev (api + db).
 
 ### 5.2 Repo layout
@@ -286,7 +291,7 @@ Each alternative carries `{ date, start, type, verdict, changeSummary, gainSumma
                       reader for old-style subjects (one-off migration only)
 /apps/api             JSON routes, HTML pages (templates/, static/), persistence, migrations, sync jobs, auth,
                       import-outlook command (one-off migration)
-/apps/outlook-addin   manifest + task pane shell (Milestone 5)
+/apps/outlook-addin   manifest + task pane shell (Milestone 6)
 pyproject.toml  uv.lock  docker-compose.yml  .env.example
 SPEC.md  CLAUDE.md  DECISIONS.md  README.md
 ```
@@ -326,13 +331,13 @@ Mailboxes / calendars (addresses from env vars):
 | Calendar | Mailbox | Written by | Content |
 | --- | --- | --- | --- |
 | Bookings | **main calendar** of the existing `operations@` mailbox (`BOOKINGS_MAILBOX`) | App; Sales by hand only as the fall-back (see "When the app is down") | One event per booking, Busy, covering the whole stay. Subject `PHE+CT · Tan family · 18 pax · ABDC · 11:00–14:00` (short name · customer · people · route · times). A split group lists every sub-group's route: `PHE · Lee wedding · 40 pax · ABCD/DCBA · 10:00–12:00`. Body in the fixed layout below. Category = ticket type colour. Booking id stored in an open extension |
-| Availability (**after Milestone 4**) | same mailbox, calendar "Availability" | App only | One event per start time with something sellable, next `availabilityCalendarDays` days, e.g. "10:30 · CHE, CHE+CT, PHE" |
+| Availability (**after Milestone 5**) | same mailbox, calendar "Availability" | App only | One event per start time with something sellable, next `availabilityCalendarDays` days, e.g. "10:30 · CHE, CHE+CT, PHE" |
 
 Staff see the Bookings calendar in their own Outlook as a shared calendar (the admin grants calendar permission
 on `operations@`; listed in `README.md`). Staff keep **Editor** rights: the calendar is never made read-only for
 them, so bookings can still be taken when the app is down. "Book in the app" is a working rule, not a permission.
 
-**How sales book**: in the app's Check and book page, or (Milestone 5) the same page in the Outlook add-in.
+**How sales book**: in the app's Check and book page, or (Milestone 6) the same page in the Outlook add-in.
 Every booking then passes the capacity check before it exists. Typing a booking into Outlook is only for when
 the app is down.
 
@@ -521,30 +526,48 @@ After the cloud move, the cloud database's own backups replace this section.
 
 ## 6. Milestones (build in this order; each ends green)
 
+Status on 2026-11-11: Milestones 1–4L are done; Milestone 5 is next.
+
 1. **Engine** — section 4 complete with the acceptance tests in section 7. No I/O.
+   *Done (2026-11-08, in `main`).*
 2. **API + DB** — section 5.3 with SQLAlchemy models + Alembic migrations, seed script (sample days),
-   transaction-safe booking.
-3. **Web UI** (Jinja2 + HTMX pages served by `apps/api`) — Enquiry check (verdict, reason, 3 alternatives, Book buttons), Availability board, 6-month
-   calendar (colour by seat-hour use), Ops timeline (zones × time, dead gaps shaded, pin, allocate, lock), Settings.
+   transaction-safe booking. *Done (2026-11-08, in `main`).*
+3. **Web UI** (Jinja2 + HTMX pages served by `apps/api`) — Enquiry check (verdict, reason, 3 alternatives, Book
+   buttons), Availability board, 6-month calendar (colour by seat-hour use), Ops timeline (zones × time, dead gaps
+   shaded, pin, allocate, lock), Settings. Reshaped as Check and book → Bookings → Day plan (`DECISIONS.md`
+   2026-11-09). *Done (2026-11-09, in `main`).*
 3R. **Zone routes (v0.4 rules)** — rework Milestones 1–3 for §2 v0.4: engine (routes, Tingkat, even splits,
    dead zone slots, new §7 tests), database migration (`zone` → `route`), example days and scenarios, CLI boards,
    API and pages (timeline shows each group's visits across zones). Uses example days only; no real data yet.
-4. **Outlook sync** — `packages/graph` against the fake first; then real Graph behind env flag `GRAPH_MODE=real`.
-   One-off take-over of the `operations@` calendar (`.ics` file first, Graph later) with the `PastBooking` history
-   table. Outlook → App with the fail-back sweep, the Outlook sync warning and `/api/health` (§5.4 "When the app
-   is down"); staff fall-back instructions in `README.md`. Admin checklist in `README.md`. The Availability
-   calendar comes after this milestone.
+   *Done (2026-11-10, in `main`).*
+4. **Outlook sync, against the fake calendar** — `packages/graph` (GraphGateway protocol, in-memory fake, event
+   format, subject readers). App → Outlook sync on every booking change. One-off take-over of the `operations@`
+   calendar from an `.ics` file: dry run with the review sheet, then `--review FILE [--commit]` with the
+   `PastBooking` history table and events taken over in place. Outlook → App: the sweep with the fail-back (§5.4
+   "When the app is down"), old text kept below the divider, the Outlook sync warning and `/api/health`; staff
+   fall-back instructions in `README.md`. *Done (2026-11-11, branch `m4-outlook`, to be merged into `main`).*
+   The real Microsoft Graph gateway moved to Milestone 5 (it needs the M365 admin's setup).
 4L. **Laptop go-live** (§5.5, §5.6) — the five SQLite safeguards, tests on SQLite and PostgreSQL in GitHub
-   Actions, auto-start and
-   update script, `JIAK_USER`, hourly backups, `uv run restore` with the paused sync and the after-restore list,
-   setup script for a new laptop, "Laptop lost or stolen" checklist in `README.md`, one restore tried. Then the
-   real take-over (§5.4) and go-live.
-5. **Cloud move** (when a trigger in §5.5 is hit) — Microsoft Entra sign-in with the Sales and Operations roles,
+   Actions, `JIAK_USER`, hourly backups and `uv run backup`, `uv run restore` with the paused sync and the
+   after-restore list, Windows scripts (setup incl. `-RestoreNewest`, start, stop, auto-start, update), the
+   printable laptop guide with the "lost, stolen or broken" checklist (`docs/LAPTOP-INSTALL.md`).
+   *Done (2026-11-11, branch `m4-outlook`).* The owner sets the laptop up and tries one restore (guide part E).
+5. **Live Outlook and go-live** — everything that needs the real calendar, the M365 admin or the owner's data:
+   - the **M365 admin's setup**, from a forwardable checklist (`docs/M365-ADMIN.md`): the app registration
+     (`Calendars.ReadWrite`, application), access limited to the Jiak99 mailboxes, a test mailbox, a client secret
+     and its expiry date, the Outlook categories, calendar access for staff;
+   - the **real Graph gateway** behind `GRAPH_MODE=real` (incl. `import-outlook --from-graph`), tested against the
+     test mailbox before `operations@`;
+   - the **review sheet completed** by the owner (the rows marked "fill in"), from a fresh export of the calendar
+     close to go-live, with corrections already made on an earlier sheet carried over (matched by event id);
+   - the **real take-over** (rehearse, then `--commit`) and **go-live** (guide part F).
+   The Availability calendar (§5.4) comes after this milestone.
+6. **Cloud move** (when a trigger in §5.5 is hit) — Microsoft Entra sign-in with the Sales and Operations roles,
    hosting with HTTPS, managed PostgreSQL with its backups, copying the laptop's SQLite data into it (checked
-   against PostgreSQL's rules first) with a rehearsal,
-   Graph change notifications. Then the **Outlook add-in**: task pane hosting the Enquiry check page; "Book"
-   creates the booking via the API (which writes the Outlook event).
-6. **Phase 2 (only when asked)** — consolidation suggestions, day-of changes (walk-ins, late arrivals), run sheet,
+   against PostgreSQL's rules first) with a rehearsal, Graph change notifications. Then the **Outlook add-in**:
+   task pane hosting the Enquiry check page; "Book" creates the booking via the API (which writes the Outlook
+   event).
+7. **Phase 2 (only when asked)** — consolidation suggestions, day-of changes (walk-ins, late arrivals), run sheet,
    metrics dashboard. **To do:** suggest splitting a large group across start times (e.g. 60 · CHE → 30 at 10:00 +
    30 at 11:00), and bookings with more than one start time. Until then sales book each part as its own booking.
    **To do:** groups over 100 (several start times; until then ops blocks the venue with a blackout). Analytics on
@@ -618,8 +641,8 @@ the dev machine.
 - Ticket durations → confirmed by the business on 2026-11-09 (zone-time table in §2).
 - Turnaround with zone routes → setting kept at default 0 (owner, 2026-11-09); revisit if the business wants a
   reset time between groups.
-- Who the M365 admin is → needed only at Milestone 4 (real Graph). Until then use the fake.
-- Availability calendar in `operations@` → deferred to after Milestone 4 (owner, 2026-11-10).
+- Who the M365 admin is → needed at Milestone 5 (real Graph). Until then use the fake.
+- Availability calendar in `operations@` → deferred to after Milestone 5 (owner, 2026-11-10; after the live Outlook go-live since v0.7).
 - Migration date (the line between history and future bookings) → default: the day the migration is committed.
 - Where the app runs → decided (owner, 2026-11-11): the owner's laptop first, the cloud later (§5.5).
 - Database on the laptop → decided (owner, 2026-11-11): SQLite with the safeguards in §5.5.

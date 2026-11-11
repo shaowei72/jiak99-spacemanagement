@@ -12,7 +12,7 @@ one user, the app reachable from this laptop only, data in a small SQLite databa
 | C | Try it out with practice data | **Now** |
 | D | Start and stop it, keep it up to date, fix common problems | **Now** |
 | E | Laptop setup: auto-start, your name in the history, hourly backups, a trial restore | **Now** |
-| F | Go-live: the Outlook connection, the calendar take-over, real bookings | **Later**, once part 6 is built |
+| F | Go-live: the Outlook connection, the calendar take-over, real bookings | **Later**, with Milestone 5 |
 | G | If the laptop is lost, stolen or broken | Keep with the business papers |
 
 > **Don't take real bookings in the app yet.** Until part F is done, the app writes to a practice stand-in for
@@ -339,15 +339,15 @@ delete it once all is well. Write the date of this test on the record sheet.
 
 ## Part F: Go-live with Outlook (later, not yet possible)
 
-These steps need Milestone 4 part 6 (the real Outlook connection), which also needs the M365 admin. This guide
+These steps need Milestone 5 (the real Outlook connection), which also needs the M365 admin. This guide
 will be updated with the exact commands for F3 and F4 then.
 
 | Step | What | Needs |
 | --- | --- | --- |
 | F1 | The M365 admin finishes the checklist in `README.md` ("What the Microsoft 365 admin will need to do") and hands over the app's Outlook settings | M365 admin |
 | F2 | Wipe the practice data: stop the app (D1); in `%LOCALAPPDATA%\Jiak99` delete `jiak99.db`, `jiak99.db-wal`, `jiak99.db-shm` and any `jiak99-replaced-*.db`; then `cd C:\Jiak99\app` and `uv run alembic upgrade head` | — |
-| F3 | Enter the Outlook settings on the laptop (`GRAPH_MODE=real` and the admin's values) | Part 6 |
-| F4 | Take over the existing calendar: rehearse, then `import-outlook --review ... --commit` | Part 6, the review sheet filled in |
+| F3 | Enter the Outlook settings on the laptop (`GRAPH_MODE=real` and the admin's values) | Milestone 5 |
+| F4 | Take over the existing calendar: a fresh review sheet (corrections carried over), rehearse, then `import-outlook --review ... --commit` | Milestone 5, the review sheet filled in |
 | F5 | Tell staff about "When the app is down" in `README.md` (typing bookings into Outlook) | — |
 | F6 | Start the app (D1) and start taking bookings in it | All of the above |
 
