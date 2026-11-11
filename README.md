@@ -29,7 +29,7 @@ Milestone 2 (API + database), Milestone 3 (web pages: Check and book, Bookings, 
 settings), Milestone 3R (the zone-route rules of SPEC v0.4), Milestone 4 (Outlook sync against the fake calendar:
 app → Outlook, the one-off take-over, Outlook → app with the fail-back, the warning banner and `/api/health`) and
 Milestone 4L (the owner's laptop: SQLite safeguards, backups and restore, Windows scripts, tests on GitHub).
-Milestones 4 and 4L are on branch `m4-outlook`, still to be merged into `main`.
+Milestones 4 and 4L were merged into `main` on 2026-11-11.
 
 Next: Milestone 5, live Outlook and go-live: the M365 admin's setup, the real Microsoft Graph connection (tested on
 a test mailbox first), the completed review sheet and the real take-over.

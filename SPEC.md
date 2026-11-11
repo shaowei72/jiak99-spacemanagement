@@ -545,13 +545,13 @@ Status on 2026-11-11: Milestones 1–4L are done; Milestone 5 is next.
    calendar from an `.ics` file: dry run with the review sheet, then `--review FILE [--commit]` with the
    `PastBooking` history table and events taken over in place. Outlook → App: the sweep with the fail-back (§5.4
    "When the app is down"), old text kept below the divider, the Outlook sync warning and `/api/health`; staff
-   fall-back instructions in `README.md`. *Done (2026-11-11, branch `m4-outlook`, to be merged into `main`).*
+   fall-back instructions in `README.md`. *Done (2026-11-11, in `main`).*
    The real Microsoft Graph gateway moved to Milestone 5 (it needs the M365 admin's setup).
 4L. **Laptop go-live** (§5.5, §5.6) — the five SQLite safeguards, tests on SQLite and PostgreSQL in GitHub
    Actions, `JIAK_USER`, hourly backups and `uv run backup`, `uv run restore` with the paused sync and the
    after-restore list, Windows scripts (setup incl. `-RestoreNewest`, start, stop, auto-start, update), the
    printable laptop guide with the "lost, stolen or broken" checklist (`docs/LAPTOP-INSTALL.md`).
-   *Done (2026-11-11, branch `m4-outlook`).* The owner sets the laptop up and tries one restore (guide part E).
+   *Done (2026-11-11, in `main`).* The owner sets the laptop up and tries one restore (guide part E).
 5. **Live Outlook and go-live** — everything that needs the real calendar, the M365 admin or the owner's data:
    - the **M365 admin's setup**, from a forwardable checklist (`docs/M365-ADMIN.md`): the app registration
      (`Calendars.ReadWrite`, application), access limited to the Jiak99 mailboxes, a test mailbox, a client secret

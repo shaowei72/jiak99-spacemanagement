@@ -122,11 +122,14 @@ cd C:\Jiak99
 ```powershell
 git clone https://github.com/shaowei72/jiak99-spacemanagement app
 cd C:\Jiak99\app
-git checkout m4-outlook
 ```
 
-> `git checkout m4-outlook` picks the newest version, which is still on its own branch. Once Milestone 4 is
-> merged into `main`, leave that line out (and on a laptop that already has it, run `git checkout main` once).
+> **Installed before 2026-11-12?** Then the laptop is on the old branch `m4-outlook`. Switch it to `main` once:
+> ```powershell
+> cd C:\Jiak99\app
+> git checkout main
+> git pull
+> ```
 
 ### B3. Install what the app needs ☐
 
