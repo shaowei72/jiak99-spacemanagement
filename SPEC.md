@@ -3,7 +3,10 @@
 > **v0.6 (2026-11-11): app first, Outlook as the fall-back.** Sales book in the app (or the Outlook add-in).
 > Typing a booking into Outlook is the fall-back for when the app is down; the app takes those entries in when it is
 > back (fail-back). Staff keep edit rights on the calendar. Adds an Outlook sync warning and database backups.
-> See `DECISIONS.md` 2026-11-11 and §5.4 "When the app is down".
+> The app runs on the owner's laptop first (one user, no sign-in yet) and moves to the cloud later (§5.5), with
+> hourly backups and a restore path for a lost or broken laptop (§5.6). New Milestone 4L (laptop go-live); the
+> cloud move becomes Milestone 5 and takes in the Outlook add-in.
+> See `DECISIONS.md` 2026-11-11, §5.4 "When the app is down", §5.5 and §5.6.
 >
 > **v0.5 (2026-11-10): Outlook calendars.** Bookings live in the main calendar of the existing `operations@` mailbox.
 > That calendar already holds today's bookings in free text and is the ground truth: the app
@@ -260,7 +263,7 @@ Each alternative carries `{ date, start, type, verdict, changeSummary, gainSumma
 - Tooling: `pytest`, `hypothesis`, `pytest-cov`, `ruff` (lint + format), `mypy --strict`.
 - `packages/engine`: pure logic, standard library only, 100% of section 4 covered.
 - `apps/api`: FastAPI + Pydantic v2, SQLAlchemy 2.0 + Alembic migrations, PostgreSQL (SQLite allowed for local
-  dev, but the concurrency tests in §8 must run against PostgreSQL). Per-date booking lock: PostgreSQL
+  dev and possibly the laptop phase, §5.5; the concurrency tests in §8 must run against PostgreSQL). Per-date booking lock: PostgreSQL
   `pg_advisory_xact_lock` inside the booking transaction. JSON API mounted under `/api`.
 - **Web UI**: server-rendered by `apps/api` with Jinja2 templates + HTMX (small vanilla JS only where needed,
   e.g. the Ops timeline). No SPA framework or JS build step. Pages: Enquiry check, Availability board,
@@ -386,7 +389,8 @@ app doesn't, and every future booking is in it with its full details (subject an
 - **Fail-back** (app back up), in this order:
   1. App → Outlook: write every booking change still waiting (the sync already catches up after an outage).
   2. Outlook → App: read every event from today to +6 months in full, not only the changes since the last
-     sweep. This is also done every time the app starts.
+     sweep. This is also done every time the app starts, and whenever the last successful sweep is more than
+     30 min old (e.g. the laptop was asleep, §5.5).
   3. Take in hand-typed entries oldest first through the normal check (rules above). Clashes get "Conflict"
      for ops to sort out with the customer.
   4. Edits and deletions of the app's own events made meanwhile become edits and cancels (rules above).
@@ -430,6 +434,73 @@ meeting links or passcodes). Tests use anonymised events made by a committed scr
 (clients replaced by consistent made-up names, bodies dropped, output reviewed before commit), plus local-only
 tests that run against the real file when `JIAK_REAL_CALENDAR_ICS` points at it and are skipped otherwise.
 
+### 5.5 Hosting: laptop first, cloud later
+
+**Laptop phase (now).** The app runs on the business owner's laptop. The owner is its only user and the only one
+taking bookings.
+
+- The app listens on `127.0.0.1` only (this laptop), because it has no sign-in yet. Never on the network.
+- No sign-in: the audit log records the owner's name from a setting (`JIAK_USER`) instead of the dev default.
+- Database: SQLite or PostgreSQL, **not decided yet** (see `docs/DATABASE-CHOICE.md`). Whichever it is, the
+  live database is never in a folder OneDrive syncs.
+- The app starts by itself when the owner signs in to Windows. Updating to a new version is one script, which
+  also upgrades the database (Alembic).
+- Outlook connection: the application permission of §5.4, as for a server, so the cloud move only copies the
+  settings. Its secret is in `.env` on the laptop.
+- No Graph change notifications (they need a public HTTPS address): the 5-min sweep and the catch-up rule in
+  §5.4 "When the app is down" (step 2) do the job. A laptop that is off or asleep counts as "app down".
+- The laptop has BitLocker on. Backups and recovery: §5.6.
+- Deferred to the cloud move: Microsoft sign-in and roles, the Outlook add-in, Graph change notifications.
+
+**Cloud move (later).** Move to a cloud server (with HTTPS, sign-in and managed PostgreSQL) when any of these
+happens: a second person needs to book or plan in the app; the laptop being off causes clashes or late bookings;
+the owner is away and nobody can run the app; the Outlook add-in is wanted. Data size and speed are not
+reasons: the laptop copes with them.
+
+### 5.6 Laptop lost or broken (laptop phase only)
+
+Outlook keeps every future booking while the laptop is gone (§5.4 fall-back). What can be lost is what only the
+app holds: the latest changes, history, audit log and settings.
+
+**Backups.** While the app runs, it makes a consistent copy of the database every hour and when it closes (SQLite:
+its backup function; PostgreSQL: `pg_dump`), into a folder synced to the owner's OneDrive for Business (not a
+personal cloud: it is customer data). It keeps hourly copies for 2 days and one a day for 30 days. A backup that
+fails shows in the Outlook sync warning banner (§5.4). A restore is tried once before go-live.
+
+**Restore.** `uv run restore FILE` checks the backup, puts it in place (the database it replaces is set aside,
+never deleted), upgrades it to the latest version, and starts the app with **Outlook sync paused**. Outlook is
+newer than the backup, so the normal sync would do the wrong thing: bring back events of bookings cancelled after
+the backup, undo later changes, and not know bookings made after it. While paused, the app reads Outlook but
+writes nothing to it and takes nothing in from it; every page shows a "Restored from backup: Outlook sync paused"
+banner. Bookings can still be checked and made.
+
+**After-restore list** (a page; list only, nothing is changed automatically). It compares Outlook (today to
++6 months) with the restored database and lists:
+1. Outlook events with a booking id the database doesn't have (booked after the backup) → the owner books them
+   in the app, then deletes the old event in Outlook;
+2. bookings whose Outlook event is gone (most likely cancelled after the backup) → the owner cancels them in the
+   app, or leaves them if they are still on;
+3. bookings whose Outlook event differs in date, time, ticket, people or customer (most likely changed after the
+   backup) → the owner edits the booking in the app to match, or leaves it;
+4. hand-typed entries, for information: they are taken in by the normal fail-back after resuming.
+
+The list updates as the owner works through it. **Resume Outlook sync** (a button on the page) makes the
+database the truth again: the normal sync writes every booking to Outlook (re-creating missing events, rewriting
+those that differ), then the fail-back of §5.4 runs. Events still carrying an unknown booking id are never
+deleted by the app; they get category "Not in app" and a note at the top of the body ("Not in the app: booked
+after the last backup. Book it in the app, then delete this event.").
+
+**Targets.** At most about an hour of app-only changes lost (and those bookings are still visible in Outlook).
+Running again on a replacement laptop within one working day.
+
+**Lost or stolen.** The steps for the owner and the M365 admin are a checklist in `README.md`: the admin revokes
+the app's Outlook secret at once and issues a new one for the replacement laptop; BitLocker keeps the data on
+the lost laptop unreadable (its recovery key kept in the business's Microsoft 365 account); the owner checks
+whether the PDPA data breach rules require a report. A replacement laptop is set up with one script, then
+`uv run restore`.
+
+After the cloud move, the cloud database's own backups replace this section.
+
 ---
 
 ## 6. Milestones (build in this order; each ends green)
@@ -447,8 +518,14 @@ tests that run against the real file when `JIAK_REAL_CALENDAR_ICS` points at it 
    table. Outlook → App with the fail-back sweep, the Outlook sync warning and `/api/health` (§5.4 "When the app
    is down"); staff fall-back instructions in `README.md`. Admin checklist in `README.md`. The Availability
    calendar comes after this milestone.
-5. **Outlook add-in** — task pane hosting the Enquiry check page; "Book" creates the booking via the API (which
-   writes the Outlook event).
+4L. **Laptop go-live** (§5.5, §5.6) — the database setup chosen in `docs/DATABASE-CHOICE.md`, auto-start and
+   update script, `JIAK_USER`, hourly backups, `uv run restore` with the paused sync and the after-restore list,
+   setup script for a new laptop, "Laptop lost or stolen" checklist in `README.md`, one restore tried. Then the
+   real take-over (§5.4) and go-live.
+5. **Cloud move** (when a trigger in §5.5 is hit) — Microsoft Entra sign-in with the Sales and Operations roles,
+   hosting with HTTPS, managed PostgreSQL with its backups, copying the laptop's data across with a rehearsal,
+   Graph change notifications. Then the **Outlook add-in**: task pane hosting the Enquiry check page; "Book"
+   creates the booking via the API (which writes the Outlook event).
 6. **Phase 2 (only when asked)** — consolidation suggestions, day-of changes (walk-ins, late arrivals), run sheet,
    metrics dashboard. **To do:** suggest splitting a large group across start times (e.g. 60 · CHE → 30 at 10:00 +
    30 at 11:00), and bookings with more than one start time. Until then sales book each part as its own booking.
@@ -507,9 +584,9 @@ the dev machine.
 - No real customer data in the repo (it is public): see §5.4 "Test data". The full mailbox address lives only in
   `.env` (`BOOKINGS_MAILBOX`); docs say `operations@`.
 - Audit log for every booking change, with actor.
-- **Backups**: the production PostgreSQL database is backed up every night (`pg_dump`), kept 30 days, and stored
-  away from the server the app runs on. A restore is tried once before go-live. Outlook's copy of future
-  bookings (§5.4) is a last resort, not a backup: it has no history, audit log or settings.
+- **Backups**: laptop phase as in §5.6 (hourly, off the laptop, restore tried before go-live). After the cloud
+  move, the managed database's daily backups, kept at least 30 days. Outlook's copy of future bookings (§5.4) is a
+  last resort, not a backup: it has no history, audit log or settings.
 
 ---
 
@@ -526,7 +603,8 @@ the dev machine.
 - Who the M365 admin is → needed only at Milestone 4 (real Graph). Until then use the fake.
 - Availability calendar in `operations@` → deferred to after Milestone 4 (owner, 2026-11-10).
 - Migration date (the line between history and future bookings) → default: the day the migration is committed.
-- Where the app runs in production (hosting) → not decided. Needed before go-live: sales and the Outlook add-in
-  need it reachable over HTTPS, and the nightly backup (§8) goes wherever the database runs.
+- Where the app runs → decided (owner, 2026-11-11): the owner's laptop first, the cloud later (§5.5).
+- Database on the laptop → SQLite or PostgreSQL, not decided; `docs/DATABASE-CHOICE.md` lays out both (it
+  recommends SQLite). Needed before Milestone 4L.
 - Manager override to book despite a refusal → not built (Phase 2 to-do, §6). Until then, an outage clash is
   settled by changing one of the bookings.
