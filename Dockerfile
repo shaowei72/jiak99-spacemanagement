@@ -20,13 +20,16 @@ WORKDIR /app
 # pyproject.toml changes, so editing our own code doesn't reinstall FastAPI etc.
 COPY pyproject.toml uv.lock ./
 COPY packages/engine/pyproject.toml packages/engine/
+COPY packages/graph/pyproject.toml packages/graph/
 COPY apps/cli/pyproject.toml apps/cli/
 COPY apps/api/pyproject.toml apps/api/
 RUN uv sync --frozen --no-dev --no-install-workspace
 
-# Step 2: our own code (engine, CLI incl. the example day files for `seed`, api).
+# Step 2: our own code (engine, Outlook calendar package, CLI incl. the example day files for
+# `seed`, api).
 COPY alembic.ini ./
 COPY packages/engine packages/engine
+COPY packages/graph packages/graph
 COPY apps/cli apps/cli
 COPY apps/api apps/api
 RUN uv sync --frozen --no-dev

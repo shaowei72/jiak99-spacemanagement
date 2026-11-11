@@ -13,3 +13,6 @@
 htmlcov
 *.db
 *.log
+# Calendar files and review sheets hold customer data: never in the image.
+*.ics
+*-review.csv
