@@ -4,13 +4,21 @@ Subject: 'PHE+CT · Tan family · 18 pax · ABDC · 11:00–14:00'
          (short name · customer · people · route · times). A split group lists every sub-group's
          route: 'ABCD/DCBA'. The route part is left out while the plan hasn't given every group a route.
 Body:    a fixed layout, so staff always find things in the same place. Empty parts are left out.
+         A note from the app (e.g. why an Outlook change wasn't made) goes on top. An event the app
+         took over keeps its old text below a divider line; the app never changes that part.
 """
 
+import re
 from dataclasses import dataclass
 
 from engine.rules import TICKET_MINUTES, TICKET_NAMES, TICKET_SHORT_NAMES, TicketType
 from engine.text import format_time
-from graph.model import CalendarEvent
+from graph.model import CATEGORY_CONFLICT, CalendarEvent
+from graph.template import ticket_from_words
+
+DIVIDER = "── Before the app ──"
+
+_PEOPLE = re.compile(r"^(\d+)\s*pax$", re.IGNORECASE)
 
 
 @dataclass(frozen=True)
@@ -97,16 +105,90 @@ def booking_body(info: BookingInfo) -> str:
     return "\n".join(lines)
 
 
-def booking_event(info: BookingInfo, event_id: str = "", created_by: str = "") -> CalendarEvent:
-    """The whole calendar event for a booking. Pass `event_id` to update an existing event in place."""
+def booking_event(
+    info: BookingInfo,
+    event_id: str = "",
+    created_by: str = "",
+    *,
+    note: str = "",
+    kept: str | None = None,
+) -> CalendarEvent:
+    """The whole calendar event for a booking. Pass `event_id` to update an existing event in place.
+
+    `note`: a message from the app for whoever looks at the event; it goes on top and adds the
+    'Conflict' category. `kept`: text kept from before the app took the event over (None: none).
+    """
+    app_part = booking_body(info)
+    categories = [ticket_category(info.ticket_type)]
+    if note:
+        app_part = f"{note}\n\n{app_part}"
+        categories.append(CATEGORY_CONFLICT)
     return CalendarEvent(
         id=event_id,
         date=info.date,
         start=info.start,
         end=info.end,
         subject=booking_subject(info),
-        body=booking_body(info),
-        categories=(ticket_category(info.ticket_type),),
+        body=compose_body(app_part, kept),
+        categories=tuple(categories),
         booking_id=info.id,
         created_by=created_by,
     )
+
+
+# --- text kept from before the app (SPEC §5.4 "Text kept from before the app") ----------------------
+
+
+def split_body(body: str) -> tuple[str, str | None]:
+    """(the app's part, the kept text below the divider). The kept text is None if there is no
+    divider line, and exactly as it was otherwise."""
+    lines = body.split("\n")
+    for number, line in enumerate(lines):
+        if line.strip() == DIVIDER:
+            above = "\n".join(lines[:number]).rstrip()
+            below = "\n".join(lines[number + 1 :])
+            return above, below
+    return body, None
+
+
+def kept_text(event: CalendarEvent) -> str | None:
+    """The text the app must keep when it rewrites `event`: whatever is below the divider; for an
+    event the app hasn't taken over yet (no booking id), the whole body; else None."""
+    _app_part, below = split_body(event.body)
+    if below is not None:
+        return below
+    if event.booking_id is None and event.body.strip():
+        return event.body
+    return None
+
+
+def compose_body(app_part: str, kept: str | None) -> str:
+    """The app's part, then the divider and the kept text (if any)."""
+    if kept is None:
+        return app_part
+    return f"{app_part}\n\n{DIVIDER}\n{kept}"
+
+
+# --- reading what people changed in Outlook ---------------------------------------------------
+
+
+def visible_state(event: CalendarEvent) -> str:
+    """The parts of an event a person sees and may change in Outlook: date, times and subject.
+    The app stores this after each write; if the event no longer matches, someone changed it."""
+    return f"{event.date} {event.start}-{event.end} {event.subject}"
+
+
+def read_booking_subject(subject: str) -> tuple[TicketType, int] | None:
+    """The ticket type and headcount from a subject in the app's format
+    ('PHE+CT · Tan family · 18 pax · ABDC · 11:00–14:00'), or None if it can't be read."""
+    parts = [part.strip() for part in subject.split("·")]
+    if len(parts) < 3:
+        return None
+    ticket_type = ticket_from_words(parts[0])
+    if ticket_type is None:
+        return None
+    for part in parts[1:]:
+        match = _PEOPLE.match(part)
+        if match:
+            return ticket_type, int(match.group(1))
+    return None

@@ -10,6 +10,7 @@ from dataclasses import dataclass
 # Categories the app sets besides the ticket type (SPEC §5.4 "Sync rules").
 CATEGORY_CONFLICT = "Conflict"
 CATEGORY_NEEDS_FORMAT = "Needs format"
+CATEGORY_NOT_IN_APP = "Not in app"
 
 
 @dataclass(frozen=True)
@@ -21,6 +22,8 @@ class CalendarEvent:
     `created_by` is the organiser's email address when known, else "".
     `ical_uid` is the event's iCalendar UID (Graph's `iCalUId`): the same id an .ics file saved from
     the calendar shows, so the take-over can find the event it read in the file. "" when unknown.
+    `created` is when the event was made in Outlook, as sortable text ('2026-11-11T09:30:00Z'), so
+    entries typed during an outage can be taken in oldest first. "" when unknown.
     """
 
     id: str
@@ -33,3 +36,4 @@ class CalendarEvent:
     booking_id: str | None = None
     created_by: str = ""
     ical_uid: str = ""
+    created: str = ""

@@ -67,3 +67,17 @@ def test_find_by_ical_uid() -> None:
     assert found.subject == "old subject"
     assert gateway.find_event_by_ical_uid("unknown") is None
     assert gateway.find_event_by_ical_uid("") is None  # events without a UID never match
+
+
+def test_each_fake_is_a_different_calendar_and_events_get_a_created_order() -> None:
+    first, second = FakeGateway(), FakeGateway()
+    assert first.calendar_id() != second.calendar_id()
+    assert first.calendar_id() == first.calendar_id()
+
+    a = first.create_event(event("2026-12-01", 600, "a"))
+    b = first.create_event(event("2026-12-01", 540, "b"))
+    given = first.create_event(
+        replace(event("2026-12-01", 540, "c"), created="2026-11-11T09:30:00Z")
+    )
+    assert a.created < b.created
+    assert given.created == "2026-11-11T09:30:00Z"

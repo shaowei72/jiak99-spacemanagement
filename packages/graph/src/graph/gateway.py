@@ -12,6 +12,11 @@ class EventNotFound(Exception):
 class GraphGateway(Protocol):
     """Read and write events in the Bookings calendar (one mailbox, its main calendar)."""
 
+    def calendar_id(self) -> str:
+        """Which calendar this is (e.g. mailbox and calendar). If it changes, the app's stored event
+        ids belong to another calendar and the app writes its events afresh."""
+        ...
+
     def list_events(self, first_date: str, last_date: str) -> list[CalendarEvent]:
         """Events starting on `first_date` up to and including `last_date`, sorted by date and start."""
         ...
