@@ -113,7 +113,11 @@ def sync_booking(
 
     # Keep Outlook's own details (event id, who created it, its UID); everything else must match.
     wanted = replace(
-        wanted, id=existing.id, created_by=existing.created_by, ical_uid=existing.ical_uid
+        wanted,
+        id=existing.id,
+        created_by=existing.created_by,
+        ical_uid=existing.ical_uid,
+        created=existing.created,
     )
     if wanted != existing:
         gateway.update_event(wanted)
