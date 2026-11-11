@@ -347,6 +347,13 @@ Notes: <free text: menu or set-meal choice, workshop item, dietary needs, tour o
 
 Contact and notes come from the booking (`Customer`, `Booking.notes`); empty lines are left out.
 
+**Text kept from before the app.** When the app takes over an event it didn't create (the one-off take-over
+below, or a hand-typed entry it books), it keeps the event's old body: the app's layout goes on top, then a
+divider line `── Before the app ──`, then the old text exactly as it was (forwarded emails, contacts, menu,
+dietary needs). The app only ever writes the part above the divider; everything below it is never changed,
+and a sync that compares the event with the booking ignores it. The kept text stays in Outlook only: it is
+not copied into the app's database. Events the app creates itself have no divider.
+
 There are **no per-zone calendars** (no room mailboxes): zone assignments are not shown in Outlook beyond the
 route in the booking subject.
 
@@ -364,7 +371,8 @@ Sync rules:
     (case-insensitive, tolerant of spacing; `[Classic CT]`, `[classic-ct]`, `[CLASSIC_CT]` all mean `CLASSIC_CT`).
     Date = event date. This is the format sales use when the app is down; the app then rewrites the subject
     into the format above.
-  - Parsed and fits → create booking, attach extension, normalise the event's times/subject.
+  - Parsed and fits → create booking, attach extension, normalise the event's times/subject, and write the
+    app's layout above what sales typed (kept below the divider, see "Text kept from before the app").
   - Parsed but does not fit → do not create; set category "Conflict" and put the check result and
     alternatives at the top of the event body (above what sales typed, which is kept).
   - Unparseable but booking-like (same test as the take-over below: a status tag, headcount or ticket word in
@@ -421,8 +429,8 @@ the ground truth. Lena's personal calendar is not used.
 4. `--review FILE --commit` applies the corrected CSV:
    - **past** events (before the migration date) → `PastBooking` rows (history);
    - **future** events, 1–100 people → real bookings through the normal enquiry check (groups over 25 split
-     evenly). The existing Outlook event is **taken over in place**: subject and body rewritten in the new
-     format, booking id attached. No second event is created. Any that don't fit are listed for sales to sort
+     evenly). The existing Outlook event is **taken over in place**: subject rewritten in the new format,
+     the app's layout put above the old body (kept below the divider), booking id attached. No second event is created. Any that don't fit are listed for sales to sort
      out by hand (not forced in, event left unchanged);
    - **future events over 100 people** → not booked (too big for one start time until Phase 2). Listed, so ops
      can block the whole venue for that time with a blackout on the Day plan page;
