@@ -224,3 +224,10 @@ button.danger-button { background: var(--no); border-color: var(--no); }
   font: inherit; color: var(--ink); padding: 0.45rem 0.5rem;
   border: 1px solid var(--line); border-radius: 6px; background: #fff; width: 100%;
 }
+
+/* Outlook sync warning, at the top of every page */
+.banner {
+  margin: 0; padding: 0.6rem 1rem;
+  background: var(--costly-bg); color: var(--costly);
+  border-bottom: 1px solid var(--costly); font-weight: 600;
+}

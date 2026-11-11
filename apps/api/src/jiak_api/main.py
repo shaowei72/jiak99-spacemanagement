@@ -14,6 +14,7 @@ import anyio
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
+from engine.dates import is_valid_date
 from graph.fake import FakeGateway
 from graph.gateway import GraphGateway
 from jiak_api.booking_pages import router as booking_pages_router
@@ -22,6 +23,7 @@ from jiak_api.clock import Now, singapore_now
 from jiak_api.config import load_config
 from jiak_api.db import Database
 from jiak_api.ops_pages import router as ops_pages_router
+from jiak_api.outlook_health import router as outlook_health_router
 from jiak_api.outlook_inbound import sweep_and_record
 from jiak_api.outlook_sync import make_gateway
 from jiak_api.pages import router as pages_router
@@ -45,10 +47,16 @@ def create_app(
     clock: Callable[[], Now] = singapore_now,
     gateway: GraphGateway | None = None,
     sweep_minutes: float = 0,
+    secret_expires: str | None = None,
 ) -> FastAPI:
     """The app, using `database` and the Outlook calendar `gateway` (default: a new in-memory fake).
     Tests pass a test database, a fixed clock and, when they look at Outlook, their own fake.
-    `sweep_minutes` > 0 reads Outlook when the app starts and then that often (0: never)."""
+    `sweep_minutes` > 0 reads Outlook when the app starts and then that often (0: never).
+    `secret_expires` ('YYYY-MM-DD'): the warning banner reminds 30 days before it."""
+    if secret_expires is not None and not is_valid_date(secret_expires):
+        raise ValueError(
+            f"AZURE_CLIENT_SECRET_EXPIRES must be a date like 2027-11-30, not {secret_expires!r}"
+        )
     calendar = gateway if gateway is not None else FakeGateway()
 
     @asynccontextmanager
@@ -64,10 +72,13 @@ def create_app(
     app.state.database = database
     app.state.clock = clock
     app.state.gateway = calendar
+    app.state.sweep_minutes = sweep_minutes
+    app.state.secret_expires = secret_expires
     app.include_router(router)
     app.include_router(pages_router)
     app.include_router(ops_pages_router)
     app.include_router(booking_pages_router)
+    app.include_router(outlook_health_router)
     app.mount("/static", StaticFiles(directory=STATIC), name="static")
     app.add_exception_handler(NoLongerFits, no_longer_fits_handler)
     return app
@@ -79,6 +90,7 @@ def _app_from_environment() -> FastAPI:
         Database(config.database_url),
         gateway=make_gateway(config),
         sweep_minutes=config.sweep_minutes,
+        secret_expires=config.secret_expires,
     )
 
 

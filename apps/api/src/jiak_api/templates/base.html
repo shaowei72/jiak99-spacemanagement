@@ -27,6 +27,8 @@
       <a href="/settings">Settings</a>
     </nav>
   </header>
+  {# The Outlook sync warning (SPEC §5.4): empty while all is well, checked again every minute. #}
+  <div id="outlook-status" hx-get="/outlook-status" hx-trigger="load, every 60s"></div>
   <main class="{% block main_class %}{% endblock %}">
     {% block content %}{% endblock %}
   </main>

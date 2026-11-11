@@ -28,10 +28,12 @@ Done: Milestone 1 (the engine, `packages/engine`, plus a command-line tool), Mil
 Milestone 3 (web pages: Check and book, Bookings, Day plan, 6-month calendar, settings) and Milestone 3R (the
 zone-route rules of SPEC v0.4, 2026-11-09).
 
-In progress: Milestone 4, Outlook sync (SPEC v0.5, branch `m4-outlook`). Done so far: the calendar package with a
-fake calendar (part 1), app → Outlook sync on every booking change (part 2), and the take-over dry run that reads the
-existing `operations@` calendar into a review sheet (part 3), and applying the corrected sheet: bookings, history
-and Outlook events taken over in place (part 4). Next: Outlook → app, then the real Microsoft Graph connection.
+In progress: Milestone 4, Outlook sync (SPEC v0.6, branch `m4-outlook`). Done so far: the calendar package with a
+fake calendar (part 1), app → Outlook sync on every booking change (part 2), the take-over dry run that reads the
+existing `operations@` calendar into a review sheet (part 3), applying the corrected sheet: bookings, history and
+Outlook events taken over in place (part 4), and Outlook → app: hand-typed entries, changes and deletions made in
+Outlook, catching up after an outage, the Outlook warning banner and `/api/health` (part 5). Next: the real Microsoft
+Graph connection (part 6), then Milestone 4L (laptop go-live).
 
 **After pulling Milestone 3R:** run `uv run alembic upgrade head`. Stored zones can't become routes, so every
 existing group becomes unplanned (no route, not pinned) until the day is allocated again. Old example data may not
@@ -185,11 +187,46 @@ Remove-Item Env:TEST_DATABASE_URL
 
 The Bookings calendar is the main calendar of the existing `operations@` mailbox (SPEC §5.4). Every booking change
 in the app updates its event there: subject like `PHE+CT · Tan family · 18 pax · ABDC · 11:00–14:00`, a fixed body
-layout, and the ticket type as category. Cancelling deletes the event. If Outlook can't be reached the booking still
-stands and the next sync of that date catches up.
+layout, and the ticket type as category. Cancelling deletes the event. An event the app took over keeps its old text
+below a `── Before the app ──` line; the app never changes that part.
+
+**Outlook → app.** When the app starts, and then every 5 minutes (`OUTLOOK_SWEEP_MINUTES`), it reads the calendar
+from today to six months ahead:
+
+- an app event **moved** in Outlook, or with a new headcount or ticket in its subject (e.g. `18 pax` → `20 pax`), is
+  re-checked like an edit in the app. If it fits, the booking changes. If not, the event is put back and a note at
+  the top says why (category "Conflict"). The note goes away with the booking's next change;
+- an app event **deleted** in Outlook cancels its booking (but if more than 5 go missing at once, nothing is
+  cancelled and the warning banner shows it);
+- a **hand-typed** entry like `[PHE] 11:00 · 10A 2C · Tan family` is booked (oldest first) and becomes that
+  booking's event, with what was typed kept below the line. No room: a note with the reason and options
+  ("Conflict"). Looks like a booking but in another format: a note with the format ("Needs format"). Meetings and
+  other events are left alone.
+
+If Outlook can't be reached, bookings still stand; the app keeps trying and catches up when Outlook is back. A
+yellow banner on every page says when Outlook hasn't been updated or read for a while, or (with
+`AZURE_CLIENT_SECRET_EXPIRES=YYYY-MM-DD` in `.env`) when the app's Outlook password expires within 30 days.
+`http://127.0.0.1:8000/api/health` answers 200 when all is well and 503 otherwise, for an uptime checker.
 
 Until the real connection is built, `GRAPH_MODE` stays `fake` (the default): the app writes to an in-memory stand-in
-calendar that is lost on restart, so nothing shows up in Outlook yet. `GRAPH_MODE=real` stops with "not built yet".
+calendar that starts empty at every restart (the app then writes all its events into it afresh), so nothing shows
+up in Outlook yet. `GRAPH_MODE=real` stops with "not built yet".
+
+### When the app is down (for staff)
+
+Outlook keeps working when the app doesn't (laptop off or asleep, or a fault), and every booking is in it.
+
+1. **Look** at bookings in the Bookings calendar as usual.
+2. **Take a new booking** by adding an event on the right day, with a subject exactly like
+   `[PHE] 11:00 · 10A 2C · Tan family`: ticket in brackets (`Tingkat`, `CHE`, `CHE+CT`, `PHE` or `PHE+CT`), start
+   time, adults with `A` and children with `C`, the customer. Put contact details, menu and dietary needs in the
+   event's text. There is no capacity check meanwhile: **if four groups already overlap that time, don't book it**,
+   and tell the customer the details follow.
+3. **Change or cancel** a booking on its event: move it to the new date or time, change `18 pax` in the subject, or
+   delete the event.
+
+When the app is back it takes all of this in, oldest first. Anything that doesn't fit gets the category "Conflict"
+with the reason at the top of the event: sort those out with the customer.
 
 ### Taking over the existing calendar (once)
 
