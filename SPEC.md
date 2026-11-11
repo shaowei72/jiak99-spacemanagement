@@ -3,7 +3,7 @@
 > **v0.6 (2026-11-11): app first, Outlook as the fall-back.** Sales book in the app (or the Outlook add-in).
 > Typing a booking into Outlook is the fall-back for when the app is down; the app takes those entries in when it is
 > back (fail-back). Staff keep edit rights on the calendar. Adds an Outlook sync warning and database backups.
-> The app runs on the owner's laptop first (one user, no sign-in yet) and moves to the cloud later (§5.5), with
+> The app runs on the owner's laptop first (one user, no sign-in yet, SQLite) and moves to the cloud later (§5.5), with
 > hourly backups and a restore path for a lost or broken laptop (§5.6). New Milestone 4L (laptop go-live); the
 > cloud move becomes Milestone 5 and takes in the Outlook add-in.
 > See `DECISIONS.md` 2026-11-11, §5.4 "When the app is down", §5.5 and §5.6.
@@ -263,7 +263,7 @@ Each alternative carries `{ date, start, type, verdict, changeSummary, gainSumma
 - Tooling: `pytest`, `hypothesis`, `pytest-cov`, `ruff` (lint + format), `mypy --strict`.
 - `packages/engine`: pure logic, standard library only, 100% of section 4 covered.
 - `apps/api`: FastAPI + Pydantic v2, SQLAlchemy 2.0 + Alembic migrations, PostgreSQL (SQLite allowed for local
-  dev and possibly the laptop phase, §5.5; the concurrency tests in §8 must run against PostgreSQL). Per-date booking lock: PostgreSQL
+  dev and for the laptop phase, §5.5; the concurrency tests in §8 must run against PostgreSQL). Per-date booking lock: PostgreSQL
   `pg_advisory_xact_lock` inside the booking transaction. JSON API mounted under `/api`.
 - **Web UI**: server-rendered by `apps/api` with Jinja2 templates + HTMX (small vanilla JS only where needed,
   e.g. the Ops timeline). No SPA framework or JS build step. Pages: Enquiry check, Availability board,
@@ -441,8 +441,16 @@ taking bookings.
 
 - The app listens on `127.0.0.1` only (this laptop), because it has no sign-in yet. Never on the network.
 - No sign-in: the audit log records the owner's name from a setting (`JIAK_USER`) instead of the dev default.
-- Database: SQLite or PostgreSQL, **not decided yet** (see `docs/DATABASE-CHOICE.md`). Whichever it is, the
-  live database is never in a folder OneDrive syncs.
+- Database: **SQLite** (owner, 2026-11-11; reasons in `docs/DATABASE-CHOICE.md`), made safe for real bookings:
+  1. the live file is in a local app folder (`%LOCALAPPDATA%\Jiak99\`), never in a folder OneDrive syncs
+     (Documents and Desktop often are);
+  2. WAL mode and a longer busy wait, so the page, the Outlook sync and the sweep can write at the same time;
+  3. every booking transaction takes SQLite's write lock at its start (`BEGIN IMMEDIATE`), so a second program
+     (e.g. `uv run import-outlook`) can't double-book while the app runs;
+  4. backups with SQLite's backup function (§5.6);
+  5. forms and API enforce the database's text limits, so nothing is stored that PostgreSQL would refuse at the
+     cloud move.
+- Tests run on SQLite and PostgreSQL for every push (GitHub Actions), so the cloud database stays supported.
 - The app starts by itself when the owner signs in to Windows. Updating to a new version is one script, which
   also upgrades the database (Alembic).
 - Outlook connection: the application permission of §5.4, as for a server, so the cloud move only copies the
@@ -462,9 +470,9 @@ reasons: the laptop copes with them.
 Outlook keeps every future booking while the laptop is gone (§5.4 fall-back). What can be lost is what only the
 app holds: the latest changes, history, audit log and settings.
 
-**Backups.** While the app runs, it makes a consistent copy of the database every hour and when it closes (SQLite:
-its backup function; PostgreSQL: `pg_dump`), into a folder synced to the owner's OneDrive for Business (not a
-personal cloud: it is customer data). It keeps hourly copies for 2 days and one a day for 30 days. A backup that
+**Backups.** While the app runs, it makes a consistent copy of the database every hour and when it closes
+(SQLite's backup function, safe while the app writes), into a folder synced to the owner's OneDrive for Business
+(not a personal cloud: it is customer data). It keeps hourly copies for 2 days and one a day for 30 days. A backup that
 fails shows in the Outlook sync warning banner (§5.4). A restore is tried once before go-live.
 
 **Restore.** `uv run restore FILE` checks the backup, puts it in place (the database it replaces is set aside,
@@ -518,12 +526,14 @@ After the cloud move, the cloud database's own backups replace this section.
    table. Outlook → App with the fail-back sweep, the Outlook sync warning and `/api/health` (§5.4 "When the app
    is down"); staff fall-back instructions in `README.md`. Admin checklist in `README.md`. The Availability
    calendar comes after this milestone.
-4L. **Laptop go-live** (§5.5, §5.6) — the database setup chosen in `docs/DATABASE-CHOICE.md`, auto-start and
+4L. **Laptop go-live** (§5.5, §5.6) — the five SQLite safeguards, tests on SQLite and PostgreSQL in GitHub
+   Actions, auto-start and
    update script, `JIAK_USER`, hourly backups, `uv run restore` with the paused sync and the after-restore list,
    setup script for a new laptop, "Laptop lost or stolen" checklist in `README.md`, one restore tried. Then the
    real take-over (§5.4) and go-live.
 5. **Cloud move** (when a trigger in §5.5 is hit) — Microsoft Entra sign-in with the Sales and Operations roles,
-   hosting with HTTPS, managed PostgreSQL with its backups, copying the laptop's data across with a rehearsal,
+   hosting with HTTPS, managed PostgreSQL with its backups, copying the laptop's SQLite data into it (checked
+   against PostgreSQL's rules first) with a rehearsal,
    Graph change notifications. Then the **Outlook add-in**: task pane hosting the Enquiry check page; "Book"
    creates the booking via the API (which writes the Outlook event).
 6. **Phase 2 (only when asked)** — consolidation suggestions, day-of changes (walk-ins, late arrivals), run sheet,
@@ -604,7 +614,6 @@ the dev machine.
 - Availability calendar in `operations@` → deferred to after Milestone 4 (owner, 2026-11-10).
 - Migration date (the line between history and future bookings) → default: the day the migration is committed.
 - Where the app runs → decided (owner, 2026-11-11): the owner's laptop first, the cloud later (§5.5).
-- Database on the laptop → SQLite or PostgreSQL, not decided; `docs/DATABASE-CHOICE.md` lays out both (it
-  recommends SQLite). Needed before Milestone 4L.
+- Database on the laptop → decided (owner, 2026-11-11): SQLite with the safeguards in §5.5.
 - Manager override to book despite a refusal → not built (Phase 2 to-do, §6). Until then, an outage clash is
   settled by changing one of the bookings.

@@ -1,6 +1,7 @@
 # SQLite or PostgreSQL on the laptop?
 
-Status: **proposal, not decided** (2026-11-11). Once decided, the outcome goes into `SPEC.md` and `DECISIONS.md`.
+Status: **decided 2026-11-11: SQLite**, with the five safeguards and the PostgreSQL tests below (`SPEC.md` §5.5,
+`DECISIONS.md`). The rest of this page is the comparison the decision was based on.
 
 ## The situation
 
