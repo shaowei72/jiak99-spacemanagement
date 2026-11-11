@@ -22,7 +22,7 @@ from jiak_api.auth import User
 from jiak_api.clock import Now
 from jiak_api.ops_pages import page
 from jiak_api.outlook_sync import OutlookDep
-from jiak_api.pages import booking_view, form_errors, people, ticket_choices
+from jiak_api.pages import booking_view, customer_errors, form_errors, people, ticket_choices
 from jiak_api.routes import (
     AnyUser,
     DatabaseDep,
@@ -236,8 +236,7 @@ def save_booking_edit(
         "notes": notes.strip(),
     }
     enquiry, errors = form_errors(form)
-    if not form["name"]:
-        errors.append("Enter the customer's name.")
+    errors.extend(customer_errors(form))
     if enquiry is None or errors:
         return edit_page(request, booking, form, errors=errors, status_code=422)
 

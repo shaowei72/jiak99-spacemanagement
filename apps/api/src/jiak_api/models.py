@@ -55,14 +55,19 @@ class Base(DeclarativeBase):
     type_annotation_map: ClassVar[dict[Any, Any]] = {datetime: UTCDateTime}
 
 
+# The longest text each customer field may hold. The forms and the API check these, so nothing is
+# stored that PostgreSQL would refuse (SQLite doesn't check lengths itself; SPEC §5.5).
+CUSTOMER_LIMITS = {"name": 200, "phone": 50, "email": 200, "company": 200}
+
+
 class Customer(Base):
     __tablename__ = "customers"
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
-    name: Mapped[str] = mapped_column(String(200))
-    phone: Mapped[str | None] = mapped_column(String(50))
-    email: Mapped[str | None] = mapped_column(String(200))
-    company: Mapped[str | None] = mapped_column(String(200))
+    name: Mapped[str] = mapped_column(String(CUSTOMER_LIMITS["name"]))
+    phone: Mapped[str | None] = mapped_column(String(CUSTOMER_LIMITS["phone"]))
+    email: Mapped[str | None] = mapped_column(String(CUSTOMER_LIMITS["email"]))
+    company: Mapped[str | None] = mapped_column(String(CUSTOMER_LIMITS["company"]))
 
 
 class Booking(Base):

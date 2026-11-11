@@ -48,11 +48,13 @@ def create_app(
     gateway: GraphGateway | None = None,
     sweep_minutes: float = 0,
     secret_expires: str | None = None,
+    default_user: str = "dev",
 ) -> FastAPI:
     """The app, using `database` and the Outlook calendar `gateway` (default: a new in-memory fake).
     Tests pass a test database, a fixed clock and, when they look at Outlook, their own fake.
     `sweep_minutes` > 0 reads Outlook when the app starts and then that often (0: never).
-    `secret_expires` ('YYYY-MM-DD'): the warning banner reminds 30 days before it."""
+    `secret_expires` ('YYYY-MM-DD'): the warning banner reminds 30 days before it.
+    `default_user`: who changes are recorded under when no X-User header is sent (JIAK_USER)."""
     if secret_expires is not None and not is_valid_date(secret_expires):
         raise ValueError(
             f"AZURE_CLIENT_SECRET_EXPIRES must be a date like 2027-11-30, not {secret_expires!r}"
@@ -74,6 +76,7 @@ def create_app(
     app.state.gateway = calendar
     app.state.sweep_minutes = sweep_minutes
     app.state.secret_expires = secret_expires
+    app.state.default_user = default_user
     app.include_router(router)
     app.include_router(pages_router)
     app.include_router(ops_pages_router)
@@ -91,6 +94,7 @@ def _app_from_environment() -> FastAPI:
         gateway=make_gateway(config),
         sweep_minutes=config.sweep_minutes,
         secret_expires=config.secret_expires,
+        default_user=config.default_user,
     )
 
 

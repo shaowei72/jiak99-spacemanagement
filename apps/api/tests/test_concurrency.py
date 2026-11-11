@@ -36,3 +36,38 @@ def test_only_four_of_ten_simultaneous_bookings_succeed(database: Database, now:
 
     assert results.count(True) == 4
     assert results.count(False) == 6
+
+
+def test_separate_programs_on_one_database_cannot_double_book(database: Database, now: Now) -> None:
+    """Like the test above, but every booking comes through its own Database object, as if from
+    separate programs (the app and `uv run import-outlook`): no shared in-process lock. On
+    SQLite the write lock taken at the start (BEGIN IMMEDIATE) must still let only 4 through."""
+    enquiry = Enquiry(date="2026-12-01", start=10 * 60, ticket_type="PREMIUM", adults=5)
+    programs = [Database(database.url) for _ in range(10)]
+
+    def try_to_book(number: int) -> bool:
+        program = programs[number]
+        with program.make_session() as db:
+            try:
+                bookings.create_booking(
+                    program,
+                    db,
+                    enquiry,
+                    bookings.CustomerDetails(name=f"Group {number}"),
+                    notes="",
+                    actor=f"program{number}",
+                    now=now,
+                )
+            except bookings.NoLongerFits:
+                return False
+            return True
+
+    try:
+        with ThreadPoolExecutor(max_workers=10) as pool:
+            results = list(pool.map(try_to_book, range(10)))
+    finally:
+        for program in programs:
+            program.engine.dispose()
+
+    assert results.count(True) == 4
+    assert results.count(False) == 6
