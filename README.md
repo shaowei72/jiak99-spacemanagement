@@ -20,7 +20,7 @@ renamed without touching data.
 
 `SPEC.md` is the contract, `DECISIONS.md` records deviations, `CLAUDE.md` has working rules. How the engine plans
 routes and judges waste: [docs/ENGINE.md](docs/ENGINE.md). Why the laptop runs SQLite:
-[docs/DATABASE-CHOICE.md](docs/DATABASE-CHOICE.md).
+[docs/DATABASE-CHOICE.md](docs/DATABASE-CHOICE.md). Installing on the owner's laptop: [docs/LAPTOP-INSTALL.md](docs/LAPTOP-INSTALL.md).
 
 ## Status
 
