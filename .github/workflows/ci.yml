@@ -1,0 +1,54 @@
+# Tests on every push and pull request (SPEC §5.5): the laptop runs SQLite, the cloud will run
+# PostgreSQL, so both stay tested without Docker on anyone's PC. Nothing here deploys anything.
+
+name: tests
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  sqlite:
+    name: Lint, types and all tests (SQLite)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - name: Install
+        run: uv sync --frozen
+      - name: Lint and format
+        run: uv run ruff check . && uv run ruff format --check .
+      - name: Types
+        run: uv run mypy
+      - name: Tests, with engine and graph coverage (must stay at 100%)
+        run: uv run pytest --cov --cov-fail-under=100
+
+  postgresql:
+    name: API tests (PostgreSQL 17)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: jiak
+          POSTGRES_PASSWORD: jiak
+          POSTGRES_DB: jiak_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U jiak"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      TEST_DATABASE_URL: postgresql+psycopg://jiak:jiak@127.0.0.1:5432/jiak_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - name: Install
+        run: uv sync --frozen
+      - name: API tests on PostgreSQL
+        run: uv run pytest apps/api

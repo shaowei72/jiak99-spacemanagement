@@ -3,7 +3,7 @@ name = "jiak99"
 version = "0.1.0"
 description = "Zone capacity app for Jiak99 (uv workspace root)"
 requires-python = ">=3.13"
-dependencies = ["engine", "jiak-cli", "jiak-api"]
+dependencies = ["engine", "graph", "jiak-cli", "jiak-api"]
 
 [dependency-groups]
 dev = [
@@ -23,6 +23,7 @@ members = ["packages/*", "apps/*"]
 
 [tool.uv.sources]
 engine = { workspace = true }
+graph = { workspace = true }
 jiak-cli = { workspace = true }
 jiak-api = { workspace = true }
 
@@ -30,7 +31,7 @@ jiak-api = { workspace = true }
 testpaths = ["packages", "apps"]
 
 [tool.coverage.run]
-source = ["engine"]
+source = ["engine", "graph"]
 branch = true
 
 [tool.coverage.report]
@@ -49,9 +50,9 @@ ignore = [
 ]
 
 [tool.ruff.lint.isort]
-known-first-party = ["engine", "engine_helpers", "jiak_cli", "jiak_api"]
+known-first-party = ["engine", "engine_helpers", "graph", "jiak_cli", "jiak_api"]
 
 [tool.mypy]
 strict = true
-files = ["packages/engine/src", "apps/cli/src", "apps/api/src"]
+files = ["packages/engine/src", "packages/graph/src","apps/cli/src", "apps/api/src"]
 plugins = ["pydantic.mypy"]

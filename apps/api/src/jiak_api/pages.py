@@ -23,6 +23,7 @@ from engine.text import duration_label, format_time
 from jiak_api import bookings, models, overview
 from jiak_api.auth import User
 from jiak_api.clock import Now
+from jiak_api.outlook_sync import OutlookDep
 from jiak_api.routes import AnyUser, DatabaseDep, DbDep, NowDep, SalesUser, to_enquiry
 from jiak_api.schemas import BookingOut, CheckOut, EnquiryIn
 
@@ -57,6 +58,23 @@ def ticket_choices() -> list[dict[str, str]]:
         label = f"{TICKET_SHORT_NAMES[code]} – {TICKET_NAMES[code]} ({duration_label(code)})"
         choices.append({"code": code, "label": label})
     return choices
+
+
+CUSTOMER_LABELS = {"name": "name", "phone": "phone", "email": "email", "company": "company"}
+
+
+def customer_errors(fields: dict[str, str]) -> list[str]:
+    """What is wrong with the customer fields of a form: no name, or text longer than the
+    database keeps (models.CUSTOMER_LIMITS)."""
+    errors: list[str] = []
+    if not fields["name"]:
+        errors.append("Enter the customer's name.")
+    for field, longest in models.CUSTOMER_LIMITS.items():
+        if len(fields[field]) > longest:
+            errors.append(
+                f"The customer's {CUSTOMER_LABELS[field]} can be at most {longest} characters."
+            )
+    return errors
 
 
 def form_errors(form: dict[str, str]) -> tuple[EnquiryIn | None, list[str]]:
@@ -290,6 +308,7 @@ def book(
     db: DbDep,
     now: NowDep,
     user: SalesUser,
+    outlook: OutlookDep,
     date: Annotated[str, Form()] = "",
     start: Annotated[str, Form()] = "",
     type: Annotated[str, Form()] = "",
@@ -316,8 +335,7 @@ def book(
         "notes": notes.strip(),
     }
     enquiry, errors = form_errors(form)
-    if not customer["name"]:
-        errors.append("Enter the customer's name.")
+    errors.extend(customer_errors(customer))
     if enquiry is None or errors:
         context: dict[str, Any] = {
             "form": form,
@@ -347,6 +365,7 @@ def book(
         check = CheckOut.from_engine(error.result)
         context = {"form": form, "check": check, "no_longer_fits": True}
         return render(request, "_check_result.html", context, status_code=409)
+    outlook.dates_changed(booking.date)
 
     booking_url = f"/bookings/{booking.id}"
     if not is_htmx(request):

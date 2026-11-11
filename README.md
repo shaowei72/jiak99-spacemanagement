@@ -19,13 +19,20 @@ Codes are what the database and API store; labels and names are display-only (`e
 renamed without touching data.
 
 `SPEC.md` is the contract, `DECISIONS.md` records deviations, `CLAUDE.md` has working rules. How the engine plans
-routes and judges waste: [docs/ENGINE.md](docs/ENGINE.md).
+routes and judges waste: [docs/ENGINE.md](docs/ENGINE.md). Why the laptop runs SQLite:
+[docs/DATABASE-CHOICE.md](docs/DATABASE-CHOICE.md). Installing on the owner's laptop: [docs/LAPTOP-INSTALL.md](docs/LAPTOP-INSTALL.md).
 
 ## Status
 
-Done: Milestone 1 (the engine, `packages/engine`, plus a command-line tool), Milestone 2 (API + database),
-Milestone 3 (web pages: Check and book, Bookings, Day plan, 6-month calendar, settings) and Milestone 3R (the
-zone-route rules of SPEC v0.4, 2026-11-09). Next: Milestone 4, Outlook sync.
+Done (SPEC v0.7 §6 has the full list): Milestone 1 (the engine, `packages/engine`, plus a command-line tool),
+Milestone 2 (API + database), Milestone 3 (web pages: Check and book, Bookings, Day plan, 6-month calendar,
+settings), Milestone 3R (the zone-route rules of SPEC v0.4), Milestone 4 (Outlook sync against the fake calendar:
+app → Outlook, the one-off take-over, Outlook → app with the fail-back, the warning banner and `/api/health`) and
+Milestone 4L (the owner's laptop: SQLite safeguards, backups and restore, Windows scripts, tests on GitHub).
+Milestones 4 and 4L were merged into `main` on 2026-11-11.
+
+Next: Milestone 5, live Outlook and go-live: the M365 admin's setup, the real Microsoft Graph connection (tested on
+a test mailbox first), the completed review sheet and the real take-over.
 
 **After pulling Milestone 3R:** run `uv run alembic upgrade head`. Stored zones can't become routes, so every
 existing group becomes unplanned (no route, not pinned) until the day is allocated again. Old example data may not
@@ -175,7 +182,122 @@ Remove-Item Env:TEST_DATABASE_URL
 `jiak_test` is a separate, empty database created when the volume is first made
 (`docker/postgres-init/`). The tests wipe it on every test, so never point `TEST_DATABASE_URL` at `jiak`.
 
+## Outlook (Milestone 4, in progress)
+
+The Bookings calendar is the main calendar of the existing `operations@` mailbox (SPEC §5.4). Every booking change
+in the app updates its event there: subject like `PHE+CT · Tan family · 18 pax · ABDC · 11:00–14:00`, a fixed body
+layout, and the ticket type as category. Cancelling deletes the event. An event the app took over keeps its old text
+below a `── Before the app ──` line; the app never changes that part.
+
+**Outlook → app.** When the app starts, and then every 5 minutes (`OUTLOOK_SWEEP_MINUTES`), it reads the calendar
+from today to six months ahead:
+
+- an app event **moved** in Outlook, or with a new headcount or ticket in its subject (e.g. `18 pax` → `20 pax`), is
+  re-checked like an edit in the app. If it fits, the booking changes. If not, the event is put back and a note at
+  the top says why (category "Conflict"). The note goes away with the booking's next change;
+- an app event **deleted** in Outlook cancels its booking (but if more than 5 go missing at once, nothing is
+  cancelled and the warning banner shows it);
+- a **hand-typed** entry like `[PHE] 11:00 · 10A 2C · Tan family` is booked (oldest first) and becomes that
+  booking's event, with what was typed kept below the line. No room: a note with the reason and options
+  ("Conflict"). Looks like a booking but in another format: a note with the format ("Needs format"). Meetings and
+  other events are left alone.
+
+If Outlook can't be reached, bookings still stand; the app keeps trying and catches up when Outlook is back. A
+yellow banner on every page says when Outlook hasn't been updated or read for a while, or (with
+`AZURE_CLIENT_SECRET_EXPIRES=YYYY-MM-DD` in `.env`) when the app's Outlook password expires within 30 days.
+`http://127.0.0.1:8000/api/health` answers 200 when all is well and 503 otherwise, for an uptime checker.
+
+Until the real connection is built, `GRAPH_MODE` stays `fake` (the default): the app writes to an in-memory stand-in
+calendar that starts empty at every restart (the app then writes all its events into it afresh), so nothing shows
+up in Outlook yet. `GRAPH_MODE=real` stops with "not built yet".
+
+### When the app is down (for staff)
+
+Outlook keeps working when the app doesn't (laptop off or asleep, or a fault), and every booking is in it.
+
+1. **Look** at bookings in the Bookings calendar as usual.
+2. **Take a new booking** by adding an event on the right day, with a subject exactly like
+   `[PHE] 11:00 · 10A 2C · Tan family`: ticket in brackets (`Tingkat`, `CHE`, `CHE+CT`, `PHE` or `PHE+CT`), start
+   time, adults with `A` and children with `C`, the customer. Put contact details, menu and dietary needs in the
+   event's text. There is no capacity check meanwhile: **if four groups already overlap that time, don't book it**,
+   and tell the customer the details follow.
+3. **Change or cancel** a booking on its event: move it to the new date or time, change `18 pax` in the subject, or
+   delete the event.
+
+When the app is back it takes all of this in, oldest first. Anything that doesn't fit gets the category "Conflict"
+with the reason at the top of the event: sort those out with the customer.
+
+### Taking over the existing calendar (once)
+
+The calendar already holds the bookings typed by hand since 2026-10-08. Save it as an `.ics` file **outside this
+repo** (the repo is public; `.gitignore` refuses `*.ics` and `*-review.csv` anyway), then:
+
+```
+uv run import-outlook --from-ics E:\MyLocalDev\Jiak_calendaring\raw\jiak-operations.ics --today 2026-11-10
+```
+
+This stores nothing. It writes a review sheet next to the `.ics` file (`jiak-operations-review.csv`, opens in
+Excel): one row per booking-like event with date, times, people, ticket, client, status and a proposed action
+(`book`, `fill in`, `check by hand`, `over 100`, `skip (cancelled)` or `history`), plus notes on what to look at.
+Fill in the missing headcounts and ticket types there. An existing sheet is never overwritten (it may hold your
+corrections) unless you add `--overwrite`. Clients whose entries never name a ticket type go in
+`apps/api/client-tickets.toml`.
+
+Then rehearse the corrected sheet, and apply it once the rehearsal looks right:
+
+```
+uv run import-outlook --review E:\MyLocalDev\Jiak_calendaring\raw\jiak-operations-review.csv
+uv run import-outlook --review E:\MyLocalDev\Jiak_calendaring\raw\jiak-operations-review.csv --commit
+```
+
+Saving the sheet from Excel is fine: dates like `12/11/2026` (day/month/year) and times like `8:30` are read too.
+The take-over date is today unless you give `--today`. Rows before it go into a read-only history table
+(`past_bookings`). Rows from that date on are booked through the normal enquiry check, as if it were the start of
+that day. A booked row's Outlook event is linked to the booking and rewritten in the app's format; no second event
+is made. The command lists the rows it didn't book (doesn't fit, over 100 people, missing headcount or ticket, event
+no longer in Outlook) and stores nothing for them. Write `skip` in a row's `action` column to leave it out. Running
+it again is safe: rows already taken over are skipped. Without `--commit` nothing is stored. It uses `DATABASE_URL`
+like the API does. With `GRAPH_MODE` fake, an in-memory copy of the sheet's events stands in for `operations@`.
+
+Test data comes from `uv run anonymise-ics REAL.ics packages/graph/tests/fixtures/operations-anon.ics`, which
+replaces client names and keeps only the headcount and product lines of the bodies. Read its output before
+committing it. To also test against the real file locally:
+`$env:JIAK_REAL_CALENDAR_ICS = "E:\MyLocalDev\Jiak_calendaring\raw\jiak-operations.ics"` before `uv run pytest`.
+
+## The owner's laptop (SPEC §5.5, §5.6)
+
+The app runs on the owner's laptop, with a SQLite database in `%LOCALAPPDATA%\Jiak99` (never in a OneDrive
+folder: the app refuses that). **[docs/LAPTOP-INSTALL.md](docs/LAPTOP-INSTALL.md)** is the printable,
+step-by-step guide: installing, setting up, everyday use, going live, and **what to do if the laptop is lost,
+stolen or broken** (part G, keep a printout with the business papers).
+
+- `scripts\windows\setup-laptop.ps1` saves the settings (`DATABASE_URL`, `JIAK_USER`, `JIAK_BACKUP_DIR`), creates
+  the database, turns on auto-start and starts the app; with `-RestoreNewest` it first puts the newest backup
+  back (replacement laptop).
+- `start-jiak99.ps1` / `stop-jiak99.ps1` start and stop it; `install-autostart.ps1` (`-Remove`) adds the Windows
+  task that starts it at sign-in and a desktop shortcut; `update-jiak99.ps1` backs up, updates and restarts.
+- **Backups:** every hour while the app runs (and when it closes), into `JIAK_BACKUP_DIR` (normally OneDrive for
+  Business). Kept: everything from 2 days, one a day for 30 days. `uv run backup` makes one now.
+- **Restore:** stop the app, `uv run restore FILE`. Outlook sync stays paused until the owner has gone through
+  http://127.0.0.1:8000/restore-check and pressed **Resume Outlook sync**.
+- Every change is recorded under `JIAK_USER` (there is no sign-in on the laptop; the app answers this laptop
+  only).
+
+Tests run on GitHub for every push (`.github/workflows/ci.yml`): everything on SQLite, the API tests also on
+PostgreSQL 17.
+
 ## What the Microsoft 365 admin will need to do
 
-Nothing yet. Needed from Milestone 4 (see `SPEC.md` §5.4): an Entra app registration with `Calendars.ReadWrite`
-application permission, restricted to the bookings shared mailbox (no zone room mailboxes are needed).
+Nothing is needed until the real Graph connection (the last part of Milestone 4). Then (see `SPEC.md` §5.4):
+
+1. **Calendar sharing:** give the staff who need it (the owner first) Editor access to the `operations@` calendar,
+   so they see it as a shared calendar in Outlook, e.g.
+   `Add-MailboxFolderPermission -Identity operations@<domain>:\Calendar -User <person> -AccessRights Editor`.
+2. **App registration** in Microsoft Entra: one app for Jiak99 with the **application** permission
+   `Calendars.ReadWrite` (Microsoft Graph), admin-consented. No mail permissions.
+3. **Limit the app to `operations@` only** with an Exchange Online application access policy or RBAC for
+   Applications, so it can't open any other mailbox. No zone room mailboxes are needed.
+4. **Send the developer** the tenant id, the app's client id and a client secret (or certificate). They go into
+   `.env` (`AZURE_TENANT_ID`, `AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET`, `BOOKINGS_MAILBOX`), never into the repo.
+5. **Keep the calendar unpublished:** don't publish `operations@`'s calendar as a public ICS link; it shows
+   customer phone numbers and emails. (Done 2026-11-10: the link was switched off.)

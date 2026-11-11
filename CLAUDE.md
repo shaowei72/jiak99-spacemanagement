@@ -35,4 +35,13 @@ Outlook (Microsoft 365) is the user layer. **Read `SPEC.md` before any work — 
 - `uv run ruff check . && uv run ruff format --check . && uv run mypy` — lint, format, types
 - `uv run seed [busy-day | week | FILE] [--replace]` — load an example day file into the database
 - `docker compose up` — api (incl. web pages) + PostgreSQL
-- `uv run import-outlook --dry-run` — Milestone 4 (console script defined in `apps/api`)
+- `uv run import-outlook --from-ics FILE [--today YYYY-MM-DD]` — take-over dry run: writes `<FILE>-review.csv` next to
+  the file, stores nothing (console script in `apps/api`)
+- `uv run import-outlook --review FILE [--commit] [--today YYYY-MM-DD]` — apply the corrected sheet: rehearsal
+  without `--commit`; with it, bookings + `past_bookings` history, Outlook events taken over in place
+- `uv run anonymise-ics REAL.ics packages/graph/tests/fixtures/operations-anon.ics` — anonymised test copy (owner
+  reads it before committing; never commit the real file)
+- `uv run backup [--to FOLDER]` — back up the SQLite database now; `uv run restore FILE` — put a backup back (app
+  stopped; Outlook sync paused until resumed at `/restore-check`)
+- `scripts\windows\*.ps1` — the owner's laptop: setup (`-RestoreNewest`), start, stop, install-autostart, update
+  (Windows PowerShell 5.1; guide in `docs/LAPTOP-INSTALL.md`)

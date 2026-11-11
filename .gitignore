@@ -22,3 +22,9 @@ htmlcov/
 
 # Local dev database
 jiak99-dev.db
+
+# Real calendar data never goes into this public repo (SPEC §5.4 "Test data").
+# Only the reviewed, anonymised test file is allowed.
+*.ics
+!packages/graph/tests/fixtures/*-anon.ics
+*-review.csv

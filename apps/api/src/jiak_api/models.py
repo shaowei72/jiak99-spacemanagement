@@ -55,14 +55,19 @@ class Base(DeclarativeBase):
     type_annotation_map: ClassVar[dict[Any, Any]] = {datetime: UTCDateTime}
 
 
+# The longest text each customer field may hold. The forms and the API check these, so nothing is
+# stored that PostgreSQL would refuse (SQLite doesn't check lengths itself; SPEC §5.5).
+CUSTOMER_LIMITS = {"name": 200, "phone": 50, "email": 200, "company": 200}
+
+
 class Customer(Base):
     __tablename__ = "customers"
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
-    name: Mapped[str] = mapped_column(String(200))
-    phone: Mapped[str | None] = mapped_column(String(50))
-    email: Mapped[str | None] = mapped_column(String(200))
-    company: Mapped[str | None] = mapped_column(String(200))
+    name: Mapped[str] = mapped_column(String(CUSTOMER_LIMITS["name"]))
+    phone: Mapped[str | None] = mapped_column(String(CUSTOMER_LIMITS["phone"]))
+    email: Mapped[str | None] = mapped_column(String(CUSTOMER_LIMITS["email"]))
+    company: Mapped[str | None] = mapped_column(String(CUSTOMER_LIMITS["company"]))
 
 
 class Booking(Base):
@@ -83,6 +88,16 @@ class Booking(Base):
     notes: Mapped[str] = mapped_column(default="")
     created_by: Mapped[str] = mapped_column(String(200))
     outlook_event_id: Mapped[str | None] = mapped_column(String(200))
+    # The iCalendar UID of the Outlook event this booking was taken over from (one-off take-over,
+    # SPEC §5.4), so running the take-over again skips it. None for bookings made in the app.
+    source_event_id: Mapped[str | None] = mapped_column(String(300), unique=True)
+    # What the Outlook event showed (date, times, subject) when the app last wrote or checked it.
+    # If the event no longer matches, someone changed it in Outlook (SPEC §5.4). None = not yet
+    # written to this calendar.
+    outlook_seen: Mapped[str | None] = mapped_column(String(600))
+    # A message from the app shown on top of the Outlook event (e.g. why an Outlook change wasn't
+    # made), with the "Conflict" category. Cleared when the booking is changed again.
+    outlook_note: Mapped[str] = mapped_column(default="")
     created_at: Mapped[datetime] = mapped_column(default=utc_now)
     updated_at: Mapped[datetime] = mapped_column(default=utc_now, onupdate=utc_now)
 
@@ -137,6 +152,83 @@ class AppSettings(Base):
     availability_calendar_days: Mapped[int] = mapped_column(default=60)
     # {"PREMIUM": {"adultCents": 9800, "childCents": 4900}, ...} or None
     prices: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+
+
+class PastBooking(Base):
+    """A booking from before the app, kept as history only (SPEC §3, §5.4 one-off take-over).
+
+    Read-only: never planned, never written to Outlook, no rule is checked against it. Holds no
+    body text, phone numbers or email addresses. `ticket_type` is None when it couldn't be told;
+    `type_source` says how it was found ('subject', 'body', 'client', 'review' or None).
+    """
+
+    __tablename__ = "past_bookings"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    date: Mapped[str] = mapped_column(String(10), index=True)
+    start: Mapped[int]
+    end: Mapped[int]
+    people: Mapped[int | None]
+    ticket_type: Mapped[str | None] = mapped_column(String(20))
+    type_source: Mapped[str | None] = mapped_column(String(20))
+    client: Mapped[str] = mapped_column(String(200))
+    status: Mapped[str] = mapped_column(String(20))  # confirmed/cancelled
+    was_soft_block: Mapped[bool]
+    source_event_id: Mapped[str] = mapped_column(String(300), unique=True)
+    original_subject: Mapped[str] = mapped_column(String(500))
+    created_at: Mapped[datetime] = mapped_column(default=utc_now)
+
+
+class OutlookState(Base):
+    """How the Outlook link is doing (SPEC §5.4 "Outlook sync warning"). Only ever one row (id 1)."""
+
+    __tablename__ = "outlook_state"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    # Which calendar the stored event ids belong to (GraphGateway.calendar_id).
+    calendar_id: Mapped[str | None] = mapped_column(String(300))
+    last_write_ok: Mapped[datetime | None]
+    last_read_ok: Mapped[datetime | None]
+    last_error: Mapped[str] = mapped_column(default="")
+    last_error_at: Mapped[datetime | None]
+    # After `uv run restore` (SPEC §5.6): nothing is written to or taken in from Outlook until the
+    # owner has gone through the after-restore list and pressed "Resume Outlook sync".
+    sync_paused: Mapped[bool] = mapped_column(default=False)
+    restored_from: Mapped[str] = mapped_column(String(300), default="")
+    restored_at: Mapped[datetime | None]
+
+
+class BackupState(Base):
+    """How the hourly backups are doing (SPEC §5.6). Only ever one row (id 1)."""
+
+    __tablename__ = "backup_state"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    last_ok: Mapped[datetime | None]
+    last_file: Mapped[str] = mapped_column(String(300), default="")
+    last_error: Mapped[str] = mapped_column(default="")
+    last_error_at: Mapped[datetime | None]
+
+
+class OutlookPending(Base):
+    """A date whose bookings still have to be written to Outlook. Removed once that worked."""
+
+    __tablename__ = "outlook_pending"
+
+    date: Mapped[str] = mapped_column(String(10), primary_key=True)
+    since: Mapped[datetime] = mapped_column(default=utc_now)
+
+
+class OutlookFlag(Base):
+    """A hand-typed Outlook entry the app couldn't book and marked ("Conflict" or "Needs format").
+    It is looked at again only when its date, times or subject change."""
+
+    __tablename__ = "outlook_flags"
+
+    event_id: Mapped[str] = mapped_column(String(300), primary_key=True)
+    seen: Mapped[str] = mapped_column(String(600))  # graph.format.visible_state when marked
+    outcome: Mapped[str] = mapped_column(String(20))  # "Conflict" or "Needs format"
+    at: Mapped[datetime] = mapped_column(default=utc_now)
 
 
 class AuditLog(Base):

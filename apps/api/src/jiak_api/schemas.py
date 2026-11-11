@@ -48,11 +48,14 @@ class EnquiryIn(ApiModel):
     children: int = Field(default=0, ge=0)
 
 
+LIMITS = models.CUSTOMER_LIMITS
+
+
 class CustomerIn(ApiModel):
-    name: str = Field(min_length=1, max_length=200)
-    phone: str | None = None
-    email: str | None = None
-    company: str | None = None
+    name: str = Field(min_length=1, max_length=LIMITS["name"])
+    phone: str | None = Field(default=None, max_length=LIMITS["phone"])
+    email: str | None = Field(default=None, max_length=LIMITS["email"])
+    company: str | None = Field(default=None, max_length=LIMITS["company"])
 
 
 class BookingIn(EnquiryIn):

@@ -16,6 +16,7 @@ from jiak_api import bookings, business_settings, models, overview, plan
 from jiak_api.auth import User, current_user, require
 from jiak_api.clock import Now
 from jiak_api.db import Database
+from jiak_api.outlook_sync import OutlookDep
 from jiak_api.schedule import load_schedule, load_settings
 from jiak_api.schemas import (
     AvailabilityOut,
@@ -104,7 +105,12 @@ def check_enquiry(
     responses={409: {"model": ConflictOut, "description": "No longer fits"}},
 )
 def create_booking(
-    body: BookingIn, database: DatabaseDep, db: DbDep, now: NowDep, user: SalesUser
+    body: BookingIn,
+    database: DatabaseDep,
+    db: DbDep,
+    now: NowDep,
+    user: SalesUser,
+    outlook: OutlookDep,
 ) -> BookingOut:
     """Book the request (or an alternative). Re-checked under the date lock."""
     customer = bookings.CustomerDetails(
@@ -117,6 +123,7 @@ def create_booking(
     booking = bookings.create_booking(
         database, db, to_enquiry(body), customer, notes=body.notes, actor=user.name, now=now
     )
+    outlook.dates_changed(booking.date)
     return BookingOut.from_row(booking)
 
 
@@ -146,6 +153,7 @@ def edit_booking(
     db: DbDep,
     now: NowDep,
     user: SalesUser,
+    outlook: OutlookDep,
 ) -> BookingOut:
     """Change a booking. A new date, time, type or headcount is re-checked like a new booking.
 
@@ -175,12 +183,13 @@ def edit_booking(
         raise HTTPException(status_code=404, detail="Booking not found.") from None
     except bookings.BookingNotChangeable as error:
         raise HTTPException(status_code=409, detail=str(error)) from None
+    outlook.dates_changed(booking.date)
     return BookingOut.from_row(booking)
 
 
 @router.post("/bookings/{booking_id}/cancel")
 def cancel_booking(
-    booking_id: str, database: DatabaseDep, db: DbDep, user: SalesUser
+    booking_id: str, database: DatabaseDep, db: DbDep, user: SalesUser, outlook: OutlookDep
 ) -> BookingOut:
     """Cancel a booking; its zone slots become free again."""
     try:
@@ -189,12 +198,18 @@ def cancel_booking(
         raise HTTPException(status_code=404, detail="Booking not found.") from None
     except bookings.BookingNotChangeable as error:
         raise HTTPException(status_code=409, detail=str(error)) from None
+    outlook.dates_changed(booking.date)
     return BookingOut.from_row(booking)
 
 
 @router.post("/bookings/{booking_id}/no-show")
 def mark_no_show(
-    booking_id: str, database: DatabaseDep, db: DbDep, now: NowDep, user: OperationsUser
+    booking_id: str,
+    database: DatabaseDep,
+    db: DbDep,
+    now: NowDep,
+    user: OperationsUser,
+    outlook: OutlookDep,
 ) -> BookingOut:
     """The group didn't come (only after the start time). Its zone slots become free again."""
     try:
@@ -203,6 +218,7 @@ def mark_no_show(
         raise HTTPException(status_code=404, detail="Booking not found.") from None
     except bookings.BookingNotChangeable as error:
         raise HTTPException(status_code=409, detail=str(error)) from None
+    outlook.dates_changed(booking.date)
     return BookingOut.from_row(booking)
 
 
@@ -334,7 +350,9 @@ def get_day(date: DateText, db: DbDep, _user: AnyUser) -> DayOut:
 
 
 @router.post("/days/{date}/allocate")
-def allocate_day(date: DateText, database: DatabaseDep, db: DbDep, user: OperationsUser) -> DayOut:
+def allocate_day(
+    date: DateText, database: DatabaseDep, db: DbDep, user: OperationsUser, outlook: OutlookDep
+) -> DayOut:
     """Give every movable session its route from the best plan. Pinned and locked ones stay put.
 
     Unpinned routes are still a suggestion: they may change when later bookings need it.
@@ -344,11 +362,14 @@ def allocate_day(date: DateText, database: DatabaseDep, db: DbDep, user: Operati
         plan.allocate_day(database, db, date, actor=user.name)
     except plan.PlanConflict as error:
         raise HTTPException(status_code=409, detail=str(error)) from None
+    outlook.dates_changed(date)
     return day_view(db, date)
 
 
 @router.post("/days/{date}/lock")
-def lock_day(date: DateText, database: DatabaseDep, db: DbDep, user: OperationsUser) -> DayOut:
+def lock_day(
+    date: DateText, database: DatabaseDep, db: DbDep, user: OperationsUser, outlook: OutlookDep
+) -> DayOut:
     """Allocate, then freeze every route of the day.
 
     Bookings made later start without a route; the next allocate gives them one and freezes it.
@@ -358,6 +379,7 @@ def lock_day(date: DateText, database: DatabaseDep, db: DbDep, user: OperationsU
         plan.lock_day(database, db, date, actor=user.name)
     except plan.PlanConflict as error:
         raise HTTPException(status_code=409, detail=str(error)) from None
+    outlook.dates_changed(date)
     return day_view(db, date)
 
 
@@ -374,7 +396,12 @@ def unlock_day(date: DateText, database: DatabaseDep, db: DbDep, user: Operation
 
 @router.patch("/sessions/{session_id}/pin")
 def pin_session(
-    session_id: str, body: PinIn, database: DatabaseDep, db: DbDep, user: OperationsUser
+    session_id: str,
+    body: PinIn,
+    database: DatabaseDep,
+    db: DbDep,
+    user: OperationsUser,
+    outlook: OutlookDep,
 ) -> DayOut:
     """Pin a group to a route, or unpin it. Returns the whole day, as other groups may move.
 
@@ -388,6 +415,7 @@ def pin_session(
         raise HTTPException(status_code=404, detail="Session not found.") from None
     except plan.PlanConflict as error:
         raise HTTPException(status_code=409, detail=str(error)) from None
+    outlook.dates_changed(date)
     return day_view(db, date)
 
 

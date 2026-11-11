@@ -34,6 +34,7 @@ from engine.rules import (
 from engine.text import format_time
 from jiak_api import business_settings, models, overview, plan
 from jiak_api.clock import Now
+from jiak_api.outlook_sync import OutlookDep, OutlookUpdates
 from jiak_api.pages import templates
 from jiak_api.routes import AnyUser, DatabaseDep, DbDep, NowDep, OperationsUser, day_view
 from jiak_api.schedule import load_schedule, load_settings
@@ -409,9 +410,15 @@ def ops_day_page(
 
 
 def run_plan_action(
-    request: Request, db: Session, now: Now, date: str, action: Callable[[], None]
+    request: Request,
+    db: Session,
+    now: Now,
+    date: str,
+    action: Callable[[], None],
+    outlook: OutlookUpdates | None = None,
 ) -> Response:
-    """Run allocate / lock / unlock; on a conflict show the page again with the reason."""
+    """Run allocate / lock / unlock; on a conflict show the page again with the reason.
+    Pass `outlook` when the action can change routes shown in Outlook."""
     if not is_valid_date(date):
         return ops_page(request, db, now.today, errors=["Pick a real date."], status_code=422)
     try:
@@ -419,6 +426,8 @@ def run_plan_action(
     except plan.PlanConflict as error:
         db.rollback()
         return ops_page(request, db, date, errors=[str(error)], status_code=409)
+    if outlook is not None:
+        outlook.dates_changed(date)
     return back_to_ops(date)
 
 
@@ -430,10 +439,16 @@ def ops_allocate(
     db: DbDep,
     now: NowDep,
     user: OperationsUser,
+    outlook: OutlookDep,
 ) -> Response:
     """Give every movable group its route from the best plan."""
     return run_plan_action(
-        request, db, now, date, lambda: plan.allocate_day(database, db, date, actor=user.name)
+        request,
+        db,
+        now,
+        date,
+        lambda: plan.allocate_day(database, db, date, actor=user.name),
+        outlook,
     )
 
 
@@ -445,10 +460,16 @@ def ops_lock(
     db: DbDep,
     now: NowDep,
     user: OperationsUser,
+    outlook: OutlookDep,
 ) -> Response:
     """Allocate, then freeze every route of the day."""
     return run_plan_action(
-        request, db, now, date, lambda: plan.lock_day(database, db, date, actor=user.name)
+        request,
+        db,
+        now,
+        date,
+        lambda: plan.lock_day(database, db, date, actor=user.name),
+        outlook,
     )
 
 
@@ -475,6 +496,7 @@ def ops_pin(
     db: DbDep,
     now: NowDep,
     user: OperationsUser,
+    outlook: OutlookDep,
     route: Annotated[str, Form()] = "",
     pinned: Annotated[str, Form()] = "true",
 ) -> Response:
@@ -500,6 +522,7 @@ def ops_pin(
     except plan.PlanConflict as error:
         db.rollback()
         return ops_page(request, db, date, errors=[str(error)], status_code=409)
+    outlook.dates_changed(date)
     return back_to_ops(date)
 
 
