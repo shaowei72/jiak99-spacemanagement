@@ -19,7 +19,8 @@ Codes are what the database and API store; labels and names are display-only (`e
 renamed without touching data.
 
 `SPEC.md` is the contract, `DECISIONS.md` records deviations, `CLAUDE.md` has working rules. How the engine plans
-routes and judges waste: [docs/ENGINE.md](docs/ENGINE.md).
+routes and judges waste: [docs/ENGINE.md](docs/ENGINE.md). Database for the laptop phase (proposal):
+[docs/DATABASE-CHOICE.md](docs/DATABASE-CHOICE.md).
 
 ## Status
 
