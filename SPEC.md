@@ -553,7 +553,8 @@ Status on 2026-11-11: Milestones 1–4L are done; Milestone 5 is next.
    printable laptop guide with the "lost, stolen or broken" checklist (`docs/LAPTOP-INSTALL.md`).
    *Done (2026-11-11, in `main`).* The owner sets the laptop up and tries one restore (guide part E).
 5. **Live Outlook and go-live** — everything that needs the real calendar, the M365 admin or the owner's data:
-   - the **M365 admin's setup**, from a forwardable checklist (`docs/M365-ADMIN.md`): the app registration
+   - the **M365 admin's setup**, from the checklist in `README.md` ("What the Microsoft 365 admin will need to
+     do"; send the admin its link): the app registration
      (`Calendars.ReadWrite`, application), access limited to the Jiak99 mailboxes, a test mailbox, a client secret
      and its expiry date, the Outlook categories, calendar access for staff;
    - the **real Graph gateway** behind `GRAPH_MODE=real` (incl. `import-outlook --from-graph`), tested against the
