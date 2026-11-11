@@ -288,16 +288,126 @@ PostgreSQL 17.
 
 ## What the Microsoft 365 admin will need to do
 
-Nothing is needed until the real Graph connection (the last part of Milestone 4). Then (see `SPEC.md` §5.4):
+A one-off job of about an hour, for Milestone 5 (the real Outlook connection, SPEC §5.4 and §6). Send the admin
+the link to this section. In the commands, replace `<domain>` with the company's email domain, `<owner>` with
+the owner's email address and `<client id>` with the app's ID from step 3.
 
-1. **Calendar sharing:** give the staff who need it (the owner first) Editor access to the `operations@` calendar,
-   so they see it as a shared calendar in Outlook, e.g.
-   `Add-MailboxFolderPermission -Identity operations@<domain>:\Calendar -User <person> -AccessRights Editor`.
-2. **App registration** in Microsoft Entra: one app for Jiak99 with the **application** permission
-   `Calendars.ReadWrite` (Microsoft Graph), admin-consented. No mail permissions.
-3. **Limit the app to `operations@` only** with an Exchange Online application access policy or RBAC for
-   Applications, so it can't open any other mailbox. No zone room mailboxes are needed.
-4. **Send the developer** the tenant id, the app's client id and a client secret (or certificate). They go into
-   `.env` (`AZURE_TENANT_ID`, `AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET`, `BOOKINGS_MAILBOX`), never into the repo.
-5. **Keep the calendar unpublished:** don't publish `operations@`'s calendar as a public ICS link; it shows
-   customer phone numbers and emails. (Done 2026-11-10: the link was switched off.)
+The app needs **calendar access only**: no mail permissions, no sign-in set-up (on the owner's laptop nobody
+signs in to the app), no room mailboxes.
+
+### 1. Calendar access for people ☐
+
+The owner and the staff who need it have **Editor** rights on the `operations@` calendar: they see it as a shared
+calendar in Outlook and can type, move and delete bookings there when the app is down (SPEC §5.4). Check who has
+access, and add anyone missing (Exchange Online PowerShell):
+
+```powershell
+Get-MailboxFolderPermission -Identity "operations@<domain>:\Calendar"
+Add-MailboxFolderPermission -Identity "operations@<domain>:\Calendar" -User <person> -AccessRights Editor
+```
+
+(If the person is already listed with another level, use `Set-MailboxFolderPermission` instead of `Add-`.)
+
+### 2. A test mailbox ☐
+
+The real connection is tried on a test calendar first, so the first writes don't land on the live bookings. A
+shared mailbox is enough (no licence needed):
+
+```powershell
+New-Mailbox -Shared -Name "Jiak99 test" -PrimarySmtpAddress jiak99-test@<domain>
+Add-MailboxFolderPermission -Identity "jiak99-test@<domain>:\Calendar" -User <owner> -AccessRights Editor
+```
+
+### 3. The app registration ☐
+
+In the **Microsoft Entra admin center → Applications → App registrations → New registration**:
+
+1. Name `Jiak99`, accounts in this organisation only, **no** redirect URI. Note the **Application (client) ID**
+   and the **Directory (tenant) ID** shown on its overview page.
+2. **API permissions → Add a permission → Microsoft Graph → Application permissions → `Calendars.ReadWrite`**,
+   then **Grant admin consent**. *(Skip this if you use RBAC for Applications in step 4, option B.)*
+3. **Certificates & secrets → New client secret**: description `Jiak99 laptop`, expiry **12 to 24 months**. Copy
+   the secret's **Value** at once (it is shown only once; not the "Secret ID"), and note its **expiry date**.
+
+### 4. Limit the app to the Jiak99 mailboxes ☐
+
+Without this, `Calendars.ReadWrite` would reach **every** calendar in the company. Choose one way.
+
+**Option A: application access policy** (the established way). A mail-enabled security group holds the two
+mailboxes, and the policy lets the app reach only those:
+
+```powershell
+New-DistributionGroup -Name "Jiak99 app mailboxes" -Alias jiak99-app-mailboxes -Type Security `
+    -Members operations@<domain>, jiak99-test@<domain>
+Set-DistributionGroup -Identity jiak99-app-mailboxes -HiddenFromAddressListsEnabled $true
+New-ApplicationAccessPolicy -AppId <client id> -PolicyScopeGroupId jiak99-app-mailboxes@<domain> `
+    -AccessRight RestrictAccess -Description "Jiak99: its calendars only"
+```
+
+**Option B: RBAC for Applications** (Microsoft's newer way). The permission is given in Exchange, limited to the
+two mailboxes, and **not** in Entra (step 3.2 skipped). `<object id>` is the **Object ID** under **Enterprise
+applications → Jiak99** (not the one on the app registration):
+
+```powershell
+Set-Mailbox operations@<domain> -CustomAttribute1 Jiak99
+Set-Mailbox jiak99-test@<domain> -CustomAttribute1 Jiak99
+New-ServicePrincipal -AppId <client id> -ObjectId <object id> -DisplayName "Jiak99"
+New-ManagementScope -Name "Jiak99 mailboxes" -RecipientRestrictionFilter "CustomAttribute1 -eq 'Jiak99'"
+New-ManagementRoleAssignment -App <client id> -Role "Application Calendars.ReadWrite" `
+    -CustomResourceScope "Jiak99 mailboxes"
+```
+
+**Check it** (changes can take up to an hour to apply): the app must reach both Jiak99 mailboxes and **no** other.
+
+```powershell
+# Option A:
+Test-ApplicationAccessPolicy -Identity operations@<domain> -AppId <client id>     # AccessCheckResult: Granted
+Test-ApplicationAccessPolicy -Identity <owner> -AppId <client id>                 # AccessCheckResult: Denied
+# Option B:
+Test-ServicePrincipalAuthorization -Identity <client id> -Resource operations@<domain>   # InScope: True
+Test-ServicePrincipalAuthorization -Identity <client id> -Resource <owner>               # InScope: False
+```
+
+If a command differs in the admin's tenant, Microsoft's current documentation for that option wins; what matters
+is the result of the check.
+
+### 5. Outlook categories ☐
+
+The app marks events with categories; their colours are set once per mailbox. In **both** mailboxes
+(`operations@` and `jiak99-test@`), open the calendar in Outlook as someone with access to that mailbox, and
+create these categories (Outlook on the web: **Settings → Accounts → Categories**). The names must match exactly:
+
+| Category | Used for | Suggested colour |
+| --- | --- | --- |
+| `Tingkat` | Tingkat Meals bookings | any |
+| `CHE` | Classic | any |
+| `CHE+CT` | Classic + Chef's Table | any |
+| `PHE` | Premium | any |
+| `PHE+CT` | Premium + Chef's Table | any |
+| `Conflict` | a change or hand-typed booking the app couldn't make | red |
+| `Needs format` | a hand-typed booking the app can't read | orange |
+| `Not in app` | after a restore: a booking the app doesn't have | grey |
+
+### 6. Keep the calendar unpublished ☐
+
+Don't publish `operations@`'s calendar as a public ICS link: it shows customer phone numbers and emails. (Done
+2026-11-10: the link was switched off. Leave it off.)
+
+### 7. Hand over the values ☐
+
+| Value | Example | Becomes the setting |
+| --- | --- | --- |
+| Directory (tenant) ID | a GUID | `AZURE_TENANT_ID` |
+| Application (client) ID | a GUID | `AZURE_CLIENT_ID` |
+| Client secret **value** | a long string | `AZURE_CLIENT_SECRET` |
+| Secret expiry date | `2027-11-30` | `AZURE_CLIENT_SECRET_EXPIRES` (the app warns 30 days before) |
+| The two mailboxes | `operations@<domain>`, `jiak99-test@<domain>` | `BOOKINGS_MAILBOX` (the test one while trying, then `operations@`) |
+| Which option was used in step 4 | A or B | — |
+
+The IDs and mailbox addresses aren't secret. **The secret is**:
+
+- give it to the owner **in person or through a password manager**, never by plain email or chat;
+- the owner enters it as a Windows setting on the laptop (guide `docs/LAPTOP-INSTALL.md`, step F3); it is never
+  written into this repository, a file in it, or a message to the developer;
+- before it expires, make a new one and give it to the owner the same way;
+- if the laptop is lost or stolen, delete it at once and make a new one (guide part G).
