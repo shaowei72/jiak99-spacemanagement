@@ -41,3 +41,7 @@ Outlook (Microsoft 365) is the user layer. **Read `SPEC.md` before any work — 
   without `--commit`; with it, bookings + `past_bookings` history, Outlook events taken over in place
 - `uv run anonymise-ics REAL.ics packages/graph/tests/fixtures/operations-anon.ics` — anonymised test copy (owner
   reads it before committing; never commit the real file)
+- `uv run backup [--to FOLDER]` — back up the SQLite database now; `uv run restore FILE` — put a backup back (app
+  stopped; Outlook sync paused until resumed at `/restore-check`)
+- `scripts\windows\*.ps1` — the owner's laptop: setup (`-RestoreNewest`), start, stop, install-autostart, update
+  (Windows PowerShell 5.1; guide in `docs/LAPTOP-INSTALL.md`)

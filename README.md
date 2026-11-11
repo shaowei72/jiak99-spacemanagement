@@ -265,6 +265,28 @@ replaces client names and keeps only the headcount and product lines of the bodi
 committing it. To also test against the real file locally:
 `$env:JIAK_REAL_CALENDAR_ICS = "E:\MyLocalDev\Jiak_calendaring\raw\jiak-operations.ics"` before `uv run pytest`.
 
+## The owner's laptop (SPEC §5.5, §5.6)
+
+The app runs on the owner's laptop, with a SQLite database in `%LOCALAPPDATA%\Jiak99` (never in a OneDrive
+folder: the app refuses that). **[docs/LAPTOP-INSTALL.md](docs/LAPTOP-INSTALL.md)** is the printable,
+step-by-step guide: installing, setting up, everyday use, going live, and **what to do if the laptop is lost,
+stolen or broken** (part G, keep a printout with the business papers).
+
+- `scripts\windows\setup-laptop.ps1` saves the settings (`DATABASE_URL`, `JIAK_USER`, `JIAK_BACKUP_DIR`), creates
+  the database, turns on auto-start and starts the app; with `-RestoreNewest` it first puts the newest backup
+  back (replacement laptop).
+- `start-jiak99.ps1` / `stop-jiak99.ps1` start and stop it; `install-autostart.ps1` (`-Remove`) adds the Windows
+  task that starts it at sign-in and a desktop shortcut; `update-jiak99.ps1` backs up, updates and restarts.
+- **Backups:** every hour while the app runs (and when it closes), into `JIAK_BACKUP_DIR` (normally OneDrive for
+  Business). Kept: everything from 2 days, one a day for 30 days. `uv run backup` makes one now.
+- **Restore:** stop the app, `uv run restore FILE`. Outlook sync stays paused until the owner has gone through
+  http://127.0.0.1:8000/restore-check and pressed **Resume Outlook sync**.
+- Every change is recorded under `JIAK_USER` (there is no sign-in on the laptop; the app answers this laptop
+  only).
+
+Tests run on GitHub for every push (`.github/workflows/ci.yml`): everything on SQLite, the API tests also on
+PostgreSQL 17.
+
 ## What the Microsoft 365 admin will need to do
 
 Nothing is needed until the real Graph connection (the last part of Milestone 4). Then (see `SPEC.md` §5.4):

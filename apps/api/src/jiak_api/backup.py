@@ -14,16 +14,20 @@ deleted. The result of every backup is recorded; a failure (or no backup for 2 h
 warning banner. PostgreSQL isn't backed up this way (the cloud database has its own backups).
 """
 
+import argparse
 import logging
 import re
 import sqlite3
+import sys
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
 
 from jiak_api import models
 from jiak_api.clock import SINGAPORE
-from jiak_api.db import Database, sqlite_file
+from jiak_api.config import load_config
+from jiak_api.db import Database, DatabaseLocationError, sqlite_file
 
 log = logging.getLogger(__name__)
 
@@ -183,3 +187,37 @@ def backup_due(folder: Path, now: datetime) -> bool:
     if not backups:
         return True
     return now - backups[-1].made >= EVERY
+
+
+# --- `uv run backup`: a backup now (before an update, or to try a restore) ---------------------
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(
+        prog="backup", description="Back up the laptop's database now (SPEC §5.6)."
+    )
+    parser.add_argument("--to", metavar="FOLDER", help="default: JIAK_BACKUP_DIR")
+    args = parser.parse_args(argv)
+    config = load_config()
+    folder = args.to or config.backup_dir
+    if not folder:
+        print("backup: say where with --to FOLDER, or set JIAK_BACKUP_DIR.", file=sys.stderr)
+        return 2
+    try:
+        database = Database(config.database_url)
+    except DatabaseLocationError as error:
+        print(f"backup: {error}", file=sys.stderr)
+        return 2
+    try:
+        made = make_backup(database.url, Path(folder), models.utc_now())
+    except BackupError as error:
+        print(f"backup: {error}", file=sys.stderr)
+        return 2
+    finally:
+        database.engine.dispose()
+    print(f"Backup made: {made}")
+    return 0
+
+
+if __name__ == "__main__":  # pragma: no cover
+    sys.exit(main())

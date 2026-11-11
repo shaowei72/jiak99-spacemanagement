@@ -22,6 +22,7 @@ seed = "jiak_api.seed:main"
 import-outlook = "jiak_api.import_outlook:main"
 anonymise-ics = "jiak_api.anonymise_ics:main"
 restore = "jiak_api.restore:main"
+backup = "jiak_api.backup:main"
 
 [tool.uv.sources]
 engine = { workspace = true }

@@ -10,12 +10,14 @@ one user, the app reachable from this laptop only, data in a small SQLite databa
 | A | Prepare the laptop (encryption, tools) | **Now** |
 | B | Install the app and check it works | **Now** |
 | C | Try it out with practice data | **Now** |
-| D | Keep it up to date, start and stop it, fix common problems | **Now** |
-| E | Go-live: auto-start, backups, Outlook connection, real bookings | **Later**, once Milestone 4L and part 6 are built |
+| D | Start and stop it, keep it up to date, fix common problems | **Now** |
+| E | Laptop setup: auto-start, your name in the history, hourly backups, a trial restore | **Now** |
+| F | Go-live: the Outlook connection, the calendar take-over, real bookings | **Later**, once part 6 is built |
+| G | If the laptop is lost, stolen or broken | Keep with the business papers |
 
-> **Don't take real bookings in the app yet.** Until part E is done, the app writes to a practice stand-in for
-> Outlook, not to the real `operations@` calendar, and nothing is backed up. Keep booking in Outlook as today.
-> Everything you enter now is practice data and is wiped at go-live (step E2).
+> **Don't take real bookings in the app yet.** Until part F is done, the app writes to a practice stand-in for
+> Outlook, not to the real `operations@` calendar. Keep booking in Outlook as today. Everything you enter now is
+> practice data and is wiped at go-live (step F2).
 
 **You need:** the laptop with Windows 10 or 11, an administrator login on it, internet for about 15 minutes,
 and this guide. **Time:** about 45 minutes.
@@ -226,26 +228,28 @@ appear.
 
 ### D1. Start and stop ☐
 
-- **Start:** PowerShell, then
+- **After part E** the app starts by itself when you sign in to Windows. Open it with the **Jiak99** shortcut on
+  the desktop (or the bookmark).
+- **By hand** (any time), in PowerShell:
   ```powershell
-  cd C:\Jiak99\app
-  uv run uvicorn jiak_api.main:app
+  powershell -ExecutionPolicy Bypass -File C:\Jiak99\app\scripts\windows\start-jiak99.ps1
+  powershell -ExecutionPolicy Bypass -File C:\Jiak99\app\scripts\windows\stop-jiak99.ps1
   ```
-  and open the **Jiak99** bookmark.
-- **Stop:** **Ctrl+C** in that PowerShell window, or close the window.
+  Start does nothing if the app is already running. The app's messages go to
+  `%LOCALAPPDATA%\Jiak99\logs` (one file per start, kept 30 days).
+- The way in step B6 (`uv run uvicorn ...` in an open window, **Ctrl+C** to stop) still works too.
 
 ### D2. Get a new version ☐
 
-When a new version is ready: stop the app (D1), then
+When a new version is ready:
 
 ```powershell
-cd C:\Jiak99\app
-git pull
-uv sync
-uv run alembic upgrade head
+powershell -ExecutionPolicy Bypass -File C:\Jiak99\app\scripts\windows\update-jiak99.ps1
 ```
 
-and start it again (D1). `alembic upgrade head` brings the database up to the new version; your data stays.
+It makes a backup (after part E), stops the app, downloads the new version, installs it, brings the database up
+to date (your data stays) and starts the app again. If a step fails it stops there and says which; start the
+app again with D1 and pass the message on.
 
 ### D3. If something goes wrong
 
@@ -253,30 +257,155 @@ and start it again (D1). `alembic upgrade head` brings the database up to the ne
 | --- | --- |
 | `uv` or `git` "is not recognized" | Close PowerShell and open a new one. Still there: repeat A5 / A6 |
 | The browser says the page can't be reached | The app isn't running: start it (D1). Check the address is `http://127.0.0.1:8000` |
-| `address already in use` / port 8000 busy | Another copy is already running (another PowerShell window). Close it, or use that one |
-| `$env:DATABASE_URL` prints nothing | Repeat B4, then **open a new PowerShell window** |
-| The data looks empty after an update | Check `$env:DATABASE_URL` (B4): the app may be using another database file |
-| A yellow bar at the top of the page | Read it: it says what is wrong with the Outlook link. Note it down and pass it on |
+| `address already in use` / port 8000 busy | Another copy is already running. Stop it (D1), then start it again |
+| `$env:DATABASE_URL` prints nothing | Repeat B4 (or E1), then **open a new PowerShell window** |
+| The data looks empty after an update | Check `$env:DATABASE_URL`: the app may be using another database file |
+| "... is inside OneDrive" when starting | The database must not be in a OneDrive folder: repeat B4 |
+| Yellow bar: "Backup failed" or "No backup since ..." | Check OneDrive for Business is signed in and running (cloud icon by the clock), and that the backup folder exists |
+| Yellow bar: "Restored from backup ..." | Open the after-restore list it links to (G5) |
+| Another yellow bar | Read it: it says what is wrong with the Outlook link. Note it down and pass it on |
+| The app didn't start after signing in | Run start (D1) and read what it says; the logs are in `%LOCALAPPDATA%\Jiak99\logs` |
 | Anything else | Copy the red text from PowerShell (select it, right-click) and pass it on |
 
 ---
 
-## Part E: Go-live (later, not yet possible)
+## Part E: Laptop setup: auto-start, your name, backups (now)
 
-These steps need work that isn't built yet: Milestone 4L (laptop go-live) and Milestone 4 part 6 (the real
-Outlook connection, which also needs the M365 admin). This guide will be updated with exact commands then.
+Do this once parts A–C are done. Everything is still practice data until part F.
+
+### E1. Check OneDrive for Business ☐
+
+Backups go to the owner's **OneDrive for Business** (the work account), which takes them off the laptop. In
+PowerShell:
+
+```powershell
+$env:OneDriveCommercial
+```
+
+It should print a folder like `C:\Users\<name>\OneDrive - <company>`. If it prints nothing, sign in to OneDrive
+with the work account first (OneDrive icon by the clock → **Settings → Account → Add an account**). Don't use a
+personal OneDrive: the backups hold customer data.
+
+### E2. Run the setup script ☐
+
+Stop the app if it runs in a window (Ctrl+C), then:
+
+```powershell
+cd C:\Jiak99\app
+git pull
+powershell -ExecutionPolicy Bypass -File scripts\windows\setup-laptop.ps1
+```
+
+It asks two things:
+
+1. **The owner's name**, as it should appear in the change history (e.g. `Owner Name`).
+2. **The backup folder.** Press **Enter** to take the one it suggests in OneDrive for Business
+   (`...\OneDrive - <company>\Jiak99 backups`).
+
+Then it saves the settings (`DATABASE_URL`, `JIAK_USER`, `JIAK_BACKUP_DIR`), installs, brings the database up to
+date (your practice data stays), turns on auto-start, puts a **Jiak99** shortcut on the desktop and starts the app.
+
+### E3. Check auto-start and backups ☐
+
+1. **Sign out of Windows and sign in again.** Within a minute, the **Jiak99** desktop shortcut opens the app.
+2. Open **http://127.0.0.1:8000/api/health**: `"lastBackupOk"` shows a time (the first backup is made when the
+   app starts).
+3. Open the backup folder in File Explorer: a file like `jiak99-2026-11-12-0930.db` is there, with OneDrive's
+   green tick (synced).
+
+From now on the app makes a backup every hour while it runs. It keeps every backup from the last 2 days and
+one per day for 30 days.
+
+### E4. Try a restore ☐
+
+A backup is only useful if it can be put back. Try it once now, with the practice data:
+
+```powershell
+cd C:\Jiak99\app
+uv run backup
+powershell -ExecutionPolicy Bypass -File scripts\windows\stop-jiak99.ps1
+$newest = Get-ChildItem $env:JIAK_BACKUP_DIR -Filter "jiak99-*.db" | Sort-Object Name | Select-Object -Last 1
+uv run restore $newest.FullName
+powershell -ExecutionPolicy Bypass -File scripts\windows\start-jiak99.ps1
+```
+
+Then open **http://127.0.0.1:8000/restore-check**. It lists what differs between Outlook and the restored data
+(during practice: nothing or very little). Press **Resume Outlook sync**. The yellow bar goes away.
+
+The database that was replaced is kept as `jiak99-replaced-<date>-<time>.db` in `%LOCALAPPDATA%\Jiak99`; you can
+delete it once all is well. Write the date of this test on the record sheet.
+
+---
+
+## Part F: Go-live with Outlook (later, not yet possible)
+
+These steps need Milestone 4 part 6 (the real Outlook connection), which also needs the M365 admin. This guide
+will be updated with the exact commands for F3 and F4 then.
 
 | Step | What | Needs |
 | --- | --- | --- |
-| E1 | The M365 admin finishes the checklist in `README.md` ("What the Microsoft 365 admin will need to do") and hands over the app's Outlook settings | M365 admin |
-| E2 | Wipe the practice data: delete `jiak99.db` in `%LOCALAPPDATA%\Jiak99`, then B5 again | — |
-| E3 | Enter the Outlook settings on the laptop (`GRAPH_MODE=real` and the admin's values) | Part 6 |
-| E4 | Set the owner's name for the change history (`JIAK_USER`) | 4L |
-| E5 | Turn on auto-start, so the app starts when the owner signs in to Windows | 4L |
-| E6 | Turn on hourly backups into the owner's OneDrive for Business, and try one restore | 4L |
-| E7 | Take over the existing calendar: rehearse, then `import-outlook --review ... --commit` | Part 6, the review sheet filled in |
-| E8 | Tell staff about "When the app is down" in `README.md` (typing bookings into Outlook) | — |
-| E9 | Start taking bookings in the app | All of the above |
+| F1 | The M365 admin finishes the checklist in `README.md` ("What the Microsoft 365 admin will need to do") and hands over the app's Outlook settings | M365 admin |
+| F2 | Wipe the practice data: stop the app (D1); in `%LOCALAPPDATA%\Jiak99` delete `jiak99.db`, `jiak99.db-wal`, `jiak99.db-shm` and any `jiak99-replaced-*.db`; then `cd C:\Jiak99\app` and `uv run alembic upgrade head` | — |
+| F3 | Enter the Outlook settings on the laptop (`GRAPH_MODE=real` and the admin's values) | Part 6 |
+| F4 | Take over the existing calendar: rehearse, then `import-outlook --review ... --commit` | Part 6, the review sheet filled in |
+| F5 | Tell staff about "When the app is down" in `README.md` (typing bookings into Outlook) | — |
+| F6 | Start the app (D1) and start taking bookings in it | All of the above |
+
+---
+
+## Part G: If the laptop is lost, stolen or broken
+
+Keep a printout of this part with the business papers. Outlook keeps every future booking meanwhile, so the
+business carries on: staff book in Outlook as in `README.md` "When the app is down".
+
+### G1. Straight away, if lost or stolen ☐
+
+- **Tell the M365 admin.** They delete the app's Outlook secret at once (Microsoft Entra → **App registrations
+  → Jiak99 → Certificates & secrets**), so nobody can use the copy on the lost laptop, and make a new one for
+  the replacement. If the owner's Microsoft 365 account was signed in on it, they also sign it out everywhere and
+  reset its password.
+- **Staff:** book in Outlook meanwhile (`README.md`, "When the app is down").
+
+### G2. The data on the lost laptop ☐
+
+The disk is encrypted (A2), so the data on it can't be read without the recovery key. Keep the key where it is
+(A3). The laptop held customer names and phone numbers: check whether Singapore's data protection rules (PDPA)
+ask you to report it to the PDPC. Encryption makes harm much less likely, but the decision is yours; this guide
+isn't legal advice.
+
+### G3. A replacement laptop ☐
+
+1. Part A (all), then B1, B2 and B3.
+2. Part E1. Then wait until the backup folder in OneDrive (the **same** one as before) shows the old backups:
+   OneDrive brings them onto the new laptop.
+3. Run the setup script with `-RestoreNewest`. It puts the newest backup back **before** the app first starts
+   (otherwise the app would back up an empty database first, and that would be the newest):
+   ```powershell
+   cd C:\Jiak99\app
+   powershell -ExecutionPolicy Bypass -File scripts\windows\setup-laptop.ps1 -RestoreNewest
+   ```
+   Give the same name and the same backup folder as before.
+4. Enter the Outlook settings with the **new** secret from the admin (F3), then restart the app (D1: stop,
+   then start).
+5. Go through the after-restore list (G5).
+
+### G4. Broken, but still in your hands ☐
+
+No data has left your hands: skip G1's secret and G2. If the laptop will be repaired, take the backups and the
+record sheet with you. Then G3 on the repaired or replacement laptop.
+
+### G5. After the restore: the after-restore list ☐
+
+Outlook is newer than the backup (at most about an hour of changes, plus anything typed in Outlook meanwhile).
+Outlook sync stays **paused** until you have checked. Open **http://127.0.0.1:8000/restore-check**:
+
+1. **Booked after the backup**: book each one in the app, then delete its old event in Outlook.
+2. **Event gone from Outlook**: most likely cancelled after the backup; cancel it in the app (or leave it if it
+   is still on).
+3. **Changed in Outlook**: edit the booking to match (or leave it).
+4. **Typed in Outlook**: for information; the app takes them in after you resume.
+
+Then press **Resume Outlook sync**. Write the date on the record sheet.
 
 ---
 
@@ -295,4 +424,5 @@ Fill in by hand and keep with the business papers (not in the laptop bag).
 | Installed on (date) | |
 | Version installed (`git log -1 --oneline` in `C:\Jiak99\app`) | |
 | M365 admin (name, how to reach) | |
-| Go-live date (part E) | |
+| Trial restore done (E4), date | |
+| Go-live date (part F) | |

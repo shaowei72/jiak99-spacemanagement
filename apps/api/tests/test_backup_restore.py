@@ -379,3 +379,31 @@ def test_the_after_restore_list_and_resuming(laptop: Database) -> None:
 def test_the_after_restore_page_when_nothing_was_restored(laptop: Database) -> None:
     client = TestClient(create_app(laptop, clock=lambda: NOW))
     assert "Outlook sync is on. Nothing to check here." in client.get("/restore-check").text
+
+
+def test_the_backup_command(
+    url: str,
+    laptop: Database,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setenv("DATABASE_URL", url)
+    monkeypatch.delenv("JIAK_BACKUP_DIR", raising=False)
+    assert backup.main([]) == 2
+    assert "set JIAK_BACKUP_DIR" in capsys.readouterr().err
+
+    folder = tmp_path / "backups"
+    monkeypatch.setenv("JIAK_BACKUP_DIR", str(folder))
+    assert backup.main([]) == 0
+    assert "Backup made: " in capsys.readouterr().out
+    assert len(list(folder.glob("jiak99-*.db"))) == 1
+
+    monkeypatch.setenv("DATABASE_URL", "postgresql+psycopg://x@127.0.0.1/jiak")
+    assert backup.main(["--to", str(folder)]) == 2
+    assert "SQLite" in capsys.readouterr().err
+
+    monkeypatch.setenv("OneDrive", str(tmp_path))
+    monkeypatch.setenv("DATABASE_URL", url)
+    assert backup.main([]) == 2
+    assert "inside OneDrive" in capsys.readouterr().err
