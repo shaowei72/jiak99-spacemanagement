@@ -1,5 +1,10 @@
-# Zone Capacity App — Build Spec (v0.5, for Claude Code)
+# Zone Capacity App — Build Spec (v0.6, for Claude Code)
 
+> **v0.6 (2026-11-11): app first, Outlook as the fall-back.** Sales book in the app (or the Outlook add-in).
+> Typing a booking into Outlook is the fall-back for when the app is down; the app takes those entries in when it is
+> back (fail-back). Staff keep edit rights on the calendar. Adds an Outlook sync warning and database backups.
+> See `DECISIONS.md` 2026-11-11 and §5.4 "When the app is down".
+>
 > **v0.5 (2026-11-10): Outlook calendars.** Bookings live in the main calendar of the existing `operations@` mailbox.
 > That calendar already holds today's bookings in free text and is the ground truth: the app
 > takes it over once (past entries into a separate history table, future ones checked and rewritten in place).
@@ -317,11 +322,16 @@ Mailboxes / calendars (addresses from env vars):
 
 | Calendar | Mailbox | Written by | Content |
 | --- | --- | --- | --- |
-| Bookings | **main calendar** of the existing `operations@` mailbox (`BOOKINGS_MAILBOX`) | App, and Sales manually | One event per booking, Busy, covering the whole stay. Subject `PHE+CT · Tan family · 18 pax · ABDC · 11:00–14:00` (short name · customer · people · route · times). A split group lists every sub-group's route: `PHE · Lee wedding · 40 pax · ABCD/DCBA · 10:00–12:00`. Body in the fixed layout below. Category = ticket type colour. Booking id stored in an open extension |
+| Bookings | **main calendar** of the existing `operations@` mailbox (`BOOKINGS_MAILBOX`) | App; Sales by hand only as the fall-back (see "When the app is down") | One event per booking, Busy, covering the whole stay. Subject `PHE+CT · Tan family · 18 pax · ABDC · 11:00–14:00` (short name · customer · people · route · times). A split group lists every sub-group's route: `PHE · Lee wedding · 40 pax · ABCD/DCBA · 10:00–12:00`. Body in the fixed layout below. Category = ticket type colour. Booking id stored in an open extension |
 | Availability (**after Milestone 4**) | same mailbox, calendar "Availability" | App only | One event per start time with something sellable, next `availabilityCalendarDays` days, e.g. "10:30 · CHE, CHE+CT, PHE" |
 
 Staff see the Bookings calendar in their own Outlook as a shared calendar (the admin grants calendar permission
-on `operations@`; listed in `README.md`).
+on `operations@`; listed in `README.md`). Staff keep **Editor** rights: the calendar is never made read-only for
+them, so bookings can still be taken when the app is down. "Book in the app" is a working rule, not a permission.
+
+**How sales book**: in the app's Check and book page, or (Milestone 5) the same page in the Outlook add-in.
+Every booking then passes the capacity check before it exists. Typing a booking into Outlook is only for when
+the app is down.
 
 **Event body** (written by the app; the same layout for every booking, so staff always find things in one place):
 
@@ -343,20 +353,52 @@ arrive; the app then updates the subject (same as any other booking change).
 Sync rules:
 - **App → Outlook**: on every booking/session change, upsert the affected events (idempotent by stored ids).
   Availability calendar: debounce, rewrite affected dates within 60 s.
-- **Outlook → App** (manual entries by sales in the Bookings calendar): Graph change notifications on the
-  Bookings calendar, plus a delta-query sweep every 5 min as a fallback. Renew subscriptions before expiry.
+- **Outlook → App** (entries typed by hand in the Bookings calendar, mainly during an outage, and changes to
+  the app's own events made in Outlook): Graph change notifications on the Bookings calendar, plus a delta-query
+  sweep every 5 min as a fallback. Renew subscriptions before expiry.
   - Event without our extension → parse the subject with the template parser:
     `^\[(tingkat|classic|classic[ _+-]?ct|premium|premium[ _+-]?ct)\]\s*(\d{1,2}:\d{2})\s*[·|\-]\s*(\d+)A(?:\s*(\d+)C)?\s*[·|\-]\s*(.+)$`
     (case-insensitive, tolerant of spacing; `[Classic CT]`, `[classic-ct]`, `[CLASSIC_CT]` all mean `CLASSIC_CT`).
-    Date = event date. Sales keep typing this format; the app then rewrites the subject into the format above.
+    Date = event date. This is the format sales use when the app is down; the app then rewrites the subject
+    into the format above.
   - Parsed and fits → create booking, attach extension, normalise the event's times/subject.
   - Parsed but does not fit → do not create; set category "Conflict" and put the check result and
     alternatives at the top of the event body (above what sales typed, which is kept).
-  - Unparseable → category "Needs format" and put the expected format at the top of the event body.
+  - Unparseable but booking-like (same test as the take-over below: a status tag, headcount or ticket word in
+    the subject) → category "Needs format" and put the expected format at the top of the event body.
+  - Anything else (meetings, site visits, staff events) is left alone.
+  - Several new entries at once (e.g. after an outage) → taken in oldest first (by when the event was created),
+    so whoever booked first keeps the slot.
   - No email is sent: sales see these categories and notes in the calendar itself (the app has calendar
     access only).
-  - Event with our extension edited or deleted in Outlook → treat as edit / cancel (re-check edits).
+  - Event with our extension edited or deleted in Outlook → treat as edit / cancel. An edit is re-checked; if
+    it doesn't fit, the booking stays as it was, the event is put back to match it, and the reason goes at the
+    top of the event body with category "Conflict".
 - There is no hold state (§2). The one-off migration below turns existing soft blocks into confirmed bookings.
+
+**When the app is down (fall-back and fail-back).** Outlook is Microsoft's service and keeps working when the
+app doesn't, and every future booking is in it with its full details (subject and body above).
+
+- **Fall-back** (app down): sales see all bookings in Outlook as usual and type new ones into the Bookings
+  calendar in the template format above. There is no capacity check meanwhile, so they judge from the calendar
+  (rule of thumb for staff, in `README.md`: if four groups already overlap that time, don't book it) and tell
+  the customer the details follow. Changes and cancellations are made on the event itself.
+- **Fail-back** (app back up), in this order:
+  1. App → Outlook: write every booking change still waiting (the sync already catches up after an outage).
+  2. Outlook → App: read every event from today to +6 months in full, not only the changes since the last
+     sweep. This is also done every time the app starts.
+  3. Take in hand-typed entries oldest first through the normal check (rules above). Clashes get "Conflict"
+     for ops to sort out with the customer.
+  4. Edits and deletions of the app's own events made meanwhile become edits and cancels (rules above).
+- **Outage in the other direction** (app up, Outlook unreachable or its sign-in expired): sales keep booking
+  in the app; Outlook catches up when it is back (step 1).
+
+**Outlook sync warning.** The app keeps when it last wrote to and read from Outlook successfully, and the last
+error. Every page shows a banner ("Outlook not updated since 14:05: <reason>") when the last attempt failed,
+when changes have been waiting for more than 10 min, or when the sweep hasn't succeeded for 30 min. If
+`AZURE_CLIENT_SECRET_EXPIRES` (`YYYY-MM-DD`, optional) is set, the banner also warns from 30 days before the app's
+Outlook sign-in expires. `GET /api/health` (no sign-in) returns the same status plus whether the database
+answers, so an uptime checker can watch it.
 
 **One-off migration: taking over the Bookings calendar** (`uv run import-outlook`, dry run by default). The
 main calendar of `operations@` already holds the bookings, typed by hand in free text since 2026-10-08. It is
@@ -402,14 +444,17 @@ tests that run against the real file when `JIAK_REAL_CALENDAR_ICS` points at it 
    API and pages (timeline shows each group's visits across zones). Uses example days only; no real data yet.
 4. **Outlook sync** — `packages/graph` against the fake first; then real Graph behind env flag `GRAPH_MODE=real`.
    One-off take-over of the `operations@` calendar (`.ics` file first, Graph later) with the `PastBooking` history
-   table. Admin checklist in `README.md`. The Availability calendar comes after this milestone.
+   table. Outlook → App with the fail-back sweep, the Outlook sync warning and `/api/health` (§5.4 "When the app
+   is down"); staff fall-back instructions in `README.md`. Admin checklist in `README.md`. The Availability
+   calendar comes after this milestone.
 5. **Outlook add-in** — task pane hosting the Enquiry check page; "Book" creates the booking via the API (which
    writes the Outlook event).
 6. **Phase 2 (only when asked)** — consolidation suggestions, day-of changes (walk-ins, late arrivals), run sheet,
    metrics dashboard. **To do:** suggest splitting a large group across start times (e.g. 60 · CHE → 30 at 10:00 +
    30 at 11:00), and bookings with more than one start time. Until then sales book each part as its own booking.
    **To do:** groups over 100 (several start times; until then ops blocks the venue with a blackout). Analytics on
-   `PastBooking` history.
+   `PastBooking` history. **To do (if asked):** a manager override to book despite a refusal (e.g. to settle an
+   outage clash the customer was already promised).
 
 ---
 
@@ -462,6 +507,9 @@ the dev machine.
 - No real customer data in the repo (it is public): see §5.4 "Test data". The full mailbox address lives only in
   `.env` (`BOOKINGS_MAILBOX`); docs say `operations@`.
 - Audit log for every booking change, with actor.
+- **Backups**: the production PostgreSQL database is backed up every night (`pg_dump`), kept 30 days, and stored
+  away from the server the app runs on. A restore is tried once before go-live. Outlook's copy of future
+  bookings (§5.4) is a last resort, not a backup: it has no history, audit log or settings.
 
 ---
 
@@ -478,3 +526,7 @@ the dev machine.
 - Who the M365 admin is → needed only at Milestone 4 (real Graph). Until then use the fake.
 - Availability calendar in `operations@` → deferred to after Milestone 4 (owner, 2026-11-10).
 - Migration date (the line between history and future bookings) → default: the day the migration is committed.
+- Where the app runs in production (hosting) → not decided. Needed before go-live: sales and the Outlook add-in
+  need it reachable over HTTPS, and the nightly backup (§8) goes wherever the database runs.
+- Manager override to book despite a refusal → not built (Phase 2 to-do, §6). Until then, an outage clash is
+  settled by changing one of the bookings.
