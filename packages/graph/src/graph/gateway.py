@@ -20,6 +20,10 @@ class GraphGateway(Protocol):
         """The event with this id. Raises `EventNotFound`."""
         ...
 
+    def find_event_by_ical_uid(self, ical_uid: str) -> CalendarEvent | None:
+        """The event whose iCalendar UID is `ical_uid` (as in an .ics file), or None."""
+        ...
+
     def create_event(self, event: CalendarEvent) -> CalendarEvent:
         """Add `event` (its `id` is ignored) and return it with the id Outlook gave it."""
         ...

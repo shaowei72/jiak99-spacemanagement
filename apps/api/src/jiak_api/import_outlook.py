@@ -2,22 +2,35 @@
 
     uv run import-outlook --from-ics FILE            # dry run: write the review sheet, store nothing
     uv run import-outlook --from-ics FILE --out review.csv --today 2026-11-12
-    uv run import-outlook --review FILE --commit     # apply the corrected sheet (not built yet)
+    uv run import-outlook --review FILE              # rehearse the corrected sheet: store nothing
+    uv run import-outlook --review FILE --commit     # apply it: bookings, history, Outlook events
     uv run import-outlook --from-graph               # read operations@ itself (not built yet)
 
 The review sheet is written next to the .ics file (`<name>-review.csv`) unless `--out` says
 otherwise. It holds customer names, so keep it out of the repo. An existing sheet is never
 overwritten (it may hold your corrections) unless you add `--overwrite`.
+
+`--review` uses DATABASE_URL like the API does, and the calendar GRAPH_MODE says. With the fake
+calendar (the default), an in-memory copy of the sheet's events stands in for operations@, so you
+can see what would be rewritten; your real calendar is not touched.
 """
 
 import argparse
+import logging
 import sys
 from collections.abc import Sequence
 from pathlib import Path
 
+from sqlalchemy.engine import make_url
+
 from engine.dates import is_valid_date
+from engine.text import plural
+from graph.fake import FakeGateway
+from graph.gateway import GraphGateway
 from graph.ics import IcsError, parse_ics
+from graph.model import CalendarEvent
 from graph.oldstyle import ClientMapError, ClientRule, parse_client_map
+from graph.sheet import SheetError, SheetRow, read_sheet
 from graph.takeover import (
     ACTION_BOOK,
     ACTION_HISTORY,
@@ -26,7 +39,21 @@ from graph.takeover import (
     count_actions,
     review_csv,
 )
-from jiak_api.clock import singapore_now
+from jiak_api.clock import Now, singapore_now
+from jiak_api.config import AppConfig, load_config
+from jiak_api.db import Database
+from jiak_api.migrate import upgrade_to_latest
+from jiak_api.outlook_sync import make_gateway
+from jiak_api.take_over import (
+    OUTCOME_ALREADY,
+    OUTCOME_BOOKED,
+    OUTCOME_HISTORY,
+    OUTCOME_SKIPPED,
+    TO_SORT_OUT,
+    TakeOverResult,
+    apply_sheet,
+    row_label,
+)
 
 DEFAULT_CLIENT_MAP = Path(__file__).resolve().parents[2] / "client-tickets.toml"  # apps/api
 
@@ -99,9 +126,122 @@ def dry_run(
     lines.append("")
     lines.append(f"Review sheet written: {out_path}")
     lines.append(
-        "Nothing was stored. Correct the sheet, then run --review FILE --commit (coming next)."
+        "Nothing was stored. Correct the sheet, then run --review FILE to rehearse "
+        "and --review FILE --commit to apply it."
     )
     return "\n".join(lines)
+
+
+# --- applying the corrected sheet --------------------------------------------------------------
+
+
+def load_sheet(path: Path) -> list[SheetRow]:
+    """Read the corrected sheet. Excel saves it as 'CSV UTF-8' or, as plain 'CSV', in the
+    Windows code page; both are read."""
+    try:
+        data = path.read_bytes()
+    except OSError as error:
+        raise TakeOverError(f"Can't read {path}: {error.strerror}") from error
+    try:
+        text = data.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        text = data.decode("cp1252", errors="replace")
+    try:
+        return read_sheet(text)
+    except SheetError as error:
+        raise TakeOverError(f"{path}: {error}") from error
+
+
+def fake_calendar(rows: list[SheetRow]) -> FakeGateway:
+    """An in-memory calendar holding each row's event as Outlook has it now (old subject)."""
+    events: list[CalendarEvent] = []
+    for row in rows:
+        if not row.event_id or not row.date:
+            continue
+        start = row.start if row.start is not None else 0
+        end = row.end if row.end is not None else start
+        events.append(
+            CalendarEvent(
+                id="",
+                date=row.date,
+                start=start,
+                end=end,
+                subject=row.subject,
+                ical_uid=row.event_id,
+            )
+        )
+    return FakeGateway(events)
+
+
+def calendar_for(config: AppConfig, rows: list[SheetRow]) -> tuple[GraphGateway, str]:
+    """The calendar to take over, and a line saying which one it is."""
+    if config.graph_mode != "real":
+        note = (
+            "Calendar: GRAPH_MODE is fake, so an in-memory copy of the sheet's events stands in "
+            "for operations@. Your real calendar is not touched."
+        )
+        return fake_calendar(rows), note
+    try:
+        gateway = make_gateway(config)
+    except NotImplementedError as error:
+        raise TakeOverError(str(error)) from error
+    return gateway, "Calendar: operations@ in Outlook (GRAPH_MODE=real)."  # pragma: no cover
+
+
+def take_over_report(result: TakeOverResult, sheet: Path, today: str, notes: list[str]) -> str:
+    """What the take-over did (or would do), to print."""
+    lines = [
+        f"Read {plural(len(result.outcomes), 'row')} from {sheet.name}. "
+        f"Take-over date {today}: rows before it are history.",
+        *notes,
+        "",
+    ]
+    order = (OUTCOME_BOOKED, OUTCOME_HISTORY, *TO_SORT_OUT, OUTCOME_SKIPPED, OUTCOME_ALREADY)
+    for outcome in order:
+        number = result.count(outcome)
+        if number:
+            lines.append(f"  {outcome:<16} {number}")
+
+    booked = [item for item in result.outcomes if item.outcome == OUTCOME_BOOKED]
+    if booked:
+        lines.append("")
+        lines.append(
+            "Booked. The Outlook event gets this subject (route added once the day is planned):"
+        )
+        for item in booked:
+            lines.append(f"  {row_label(item.row)}")
+            lines.append(f"  {'':19}-> {item.message}")
+
+    to_sort = [item for item in result.outcomes if item.outcome in TO_SORT_OUT]
+    if to_sort:
+        lines.append("")
+        lines.append("To sort out by hand (nothing stored, the Outlook event is left as it is):")
+        for item in to_sort:
+            lines.append(f"  {row_label(item.row)}")
+            lines.append(f"  {'':19}{item.outcome}: {item.message}")
+
+    lines.append("")
+    if result.committed:
+        dates = plural(len(result.booked_dates), "date")
+        lines.append(f"Stored. Outlook events rewritten in place on {dates}.")
+    else:
+        lines.append("Rehearsal: nothing was stored. Add --commit to apply the sheet.")
+    return "\n".join(lines)
+
+
+def apply_review(sheet: Path, today: str, now: Now, config: AppConfig, *, commit: bool) -> str:
+    """Rehearse (or with `commit`, apply) the corrected sheet and return the report."""
+    rows = load_sheet(sheet)
+    gateway, calendar_note = calendar_for(config, rows)
+    upgrade_to_latest(config.database_url)  # make sure the tables exist
+    database = Database(config.database_url)
+    try:
+        with database.make_session() as db:
+            result = apply_sheet(database, db, gateway, rows, today=today, now=now, commit=commit)
+    finally:
+        database.engine.dispose()
+    shown = make_url(config.database_url).render_as_string(hide_password=True)
+    return take_over_report(result, sheet, today, [calendar_note, f"Database: {shown}"])
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -114,7 +254,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     source.add_argument(
         "--from-graph", action="store_true", help="read the calendar itself (later)"
     )
-    source.add_argument("--review", metavar="CSV", help="a corrected review sheet to apply (later)")
+    source.add_argument("--review", metavar="CSV", help="the corrected review sheet to apply")
     parser.add_argument("--out", metavar="CSV", help="where to write the review sheet")
     parser.add_argument("--today", metavar="YYYY-MM-DD", help="take-over date (default: today)")
     parser.add_argument(
@@ -125,24 +265,36 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     parser.add_argument("--overwrite", action="store_true", help="replace an existing review sheet")
     parser.add_argument("--dry-run", action="store_true", help="store nothing (the default)")
-    parser.add_argument("--commit", action="store_true", help="apply --review FILE (later)")
+    parser.add_argument("--commit", action="store_true", help="with --review: store it")
     args = parser.parse_args(argv)
 
     try:
-        if args.commit or args.review:
-            raise TakeOverError("--review / --commit are not built yet (Milestone 4 part 4).")
+        if args.commit and not args.review:
+            raise TakeOverError("--commit goes with --review CSV (the corrected sheet).")
         if args.from_graph:
             raise TakeOverError(
                 "--from-graph is not built yet (needs the real Graph gateway). Use --from-ics."
             )
-        if not args.from_ics:
-            raise TakeOverError("Say where to read from: --from-ics FILE.")
+        if not args.from_ics and not args.review:
+            raise TakeOverError("Say where to read from: --from-ics FILE (or --review CSV).")
         today = args.today or singapore_now().today
         if not is_valid_date(today):
             raise TakeOverError(f"--today must be a date like 2026-11-12, not {today!r}.")
-        rules = load_client_map(Path(args.clients))
-        ics_path = Path(args.from_ics)
-        summary = dry_run(ics_path, review_path(ics_path, args.out), today, rules, args.overwrite)
+        # Bookings are checked as if at the start of the take-over date, so groups coming later
+        # that same day are still taken over even if their start time has already passed.
+        now = Now(today=today, minute=0)
+        if hasattr(sys.stdout, "reconfigure"):
+            sys.stdout.reconfigure(encoding="utf-8")  # the report uses "·" and "–"
+        if args.review:
+            # Outlook errors during the rewrite are logged by the sync; show them here.
+            logging.basicConfig(level=logging.WARNING, format="%(levelname)s %(message)s")
+            summary = apply_review(Path(args.review), today, now, load_config(), commit=args.commit)
+        else:
+            rules = load_client_map(Path(args.clients))
+            ics_path = Path(args.from_ics)
+            summary = dry_run(
+                ics_path, review_path(ics_path, args.out), today, rules, args.overwrite
+            )
     except TakeOverError as error:
         print(f"import-outlook: {error}", file=sys.stderr)
         return 2

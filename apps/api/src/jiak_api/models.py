@@ -83,6 +83,9 @@ class Booking(Base):
     notes: Mapped[str] = mapped_column(default="")
     created_by: Mapped[str] = mapped_column(String(200))
     outlook_event_id: Mapped[str | None] = mapped_column(String(200))
+    # The iCalendar UID of the Outlook event this booking was taken over from (one-off take-over,
+    # SPEC §5.4), so running the take-over again skips it. None for bookings made in the app.
+    source_event_id: Mapped[str | None] = mapped_column(String(300), unique=True)
     created_at: Mapped[datetime] = mapped_column(default=utc_now)
     updated_at: Mapped[datetime] = mapped_column(default=utc_now, onupdate=utc_now)
 
@@ -137,6 +140,31 @@ class AppSettings(Base):
     availability_calendar_days: Mapped[int] = mapped_column(default=60)
     # {"PREMIUM": {"adultCents": 9800, "childCents": 4900}, ...} or None
     prices: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+
+
+class PastBooking(Base):
+    """A booking from before the app, kept as history only (SPEC §3, §5.4 one-off take-over).
+
+    Read-only: never planned, never written to Outlook, no rule is checked against it. Holds no
+    body text, phone numbers or email addresses. `ticket_type` is None when it couldn't be told;
+    `type_source` says how it was found ('subject', 'body', 'client', 'review' or None).
+    """
+
+    __tablename__ = "past_bookings"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    date: Mapped[str] = mapped_column(String(10), index=True)
+    start: Mapped[int]
+    end: Mapped[int]
+    people: Mapped[int | None]
+    ticket_type: Mapped[str | None] = mapped_column(String(20))
+    type_source: Mapped[str | None] = mapped_column(String(20))
+    client: Mapped[str] = mapped_column(String(200))
+    status: Mapped[str] = mapped_column(String(20))  # confirmed/cancelled
+    was_soft_block: Mapped[bool]
+    source_event_id: Mapped[str] = mapped_column(String(300), unique=True)
+    original_subject: Mapped[str] = mapped_column(String(500))
+    created_at: Mapped[datetime] = mapped_column(default=utc_now)
 
 
 class AuditLog(Base):

@@ -19,6 +19,8 @@ class CalendarEvent:
     `id` is Outlook's event id ("" for an event not yet created). `booking_id` is the app's booking id,
     kept in an open extension on the event; None means the app hasn't taken this event over (yet).
     `created_by` is the organiser's email address when known, else "".
+    `ical_uid` is the event's iCalendar UID (Graph's `iCalUId`): the same id an .ics file saved from
+    the calendar shows, so the take-over can find the event it read in the file. "" when unknown.
     """
 
     id: str
@@ -30,3 +32,4 @@ class CalendarEvent:
     categories: tuple[str, ...] = ()
     booking_id: str | None = None
     created_by: str = ""
+    ical_uid: str = ""

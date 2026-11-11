@@ -32,6 +32,13 @@ class FakeGateway:
             raise EventNotFound(event_id)
         return self.events[event_id]
 
+    def find_event_by_ical_uid(self, ical_uid: str) -> CalendarEvent | None:
+        """The event whose iCalendar UID is `ical_uid` (as in an .ics file), or None."""
+        for event in self.events.values():
+            if ical_uid and event.ical_uid == ical_uid:
+                return event
+        return None
+
     def create_event(self, event: CalendarEvent) -> CalendarEvent:
         """Add `event` with a new id ('fake-1', 'fake-2', ...) and return it."""
         new_id = f"fake-{self._next_number}"

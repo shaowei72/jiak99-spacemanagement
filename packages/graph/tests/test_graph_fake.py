@@ -57,3 +57,13 @@ def test_unknown_ids_raise_event_not_found() -> None:
         gateway.update_event(event("2026-12-01", 600, "x", "nope"))
     with pytest.raises(EventNotFound):
         gateway.delete_event("nope")
+
+
+def test_find_by_ical_uid() -> None:
+    with_uid = replace(event("2026-12-01", 600, "old subject"), ical_uid="040000008200E001")
+    gateway = FakeGateway([event("2026-12-01", 540, "other"), with_uid])
+    found = gateway.find_event_by_ical_uid("040000008200E001")
+    assert found is not None
+    assert found.subject == "old subject"
+    assert gateway.find_event_by_ical_uid("unknown") is None
+    assert gateway.find_event_by_ical_uid("") is None  # events without a UID never match

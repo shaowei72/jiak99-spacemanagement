@@ -29,8 +29,8 @@ zone-route rules of SPEC v0.4, 2026-11-09).
 
 In progress: Milestone 4, Outlook sync (SPEC v0.5, branch `m4-outlook`). Done so far: the calendar package with a
 fake calendar (part 1), app → Outlook sync on every booking change (part 2), and the take-over dry run that reads the
-existing `operations@` calendar into a review sheet (part 3). Next: applying the corrected sheet (part 4), then
-Outlook → app, then the real Microsoft Graph connection.
+existing `operations@` calendar into a review sheet (part 3), and applying the corrected sheet: bookings, history
+and Outlook events taken over in place (part 4). Next: Outlook → app, then the real Microsoft Graph connection.
 
 **After pulling Milestone 3R:** run `uv run alembic upgrade head`. Stored zones can't become routes, so every
 existing group becomes unplanned (no route, not pinned) until the day is allocated again. Old example data may not
@@ -204,7 +204,23 @@ Excel): one row per booking-like event with date, times, people, ticket, client,
 (`book`, `fill in`, `check by hand`, `over 100`, `skip (cancelled)` or `history`), plus notes on what to look at.
 Fill in the missing headcounts and ticket types there. An existing sheet is never overwritten (it may hold your
 corrections) unless you add `--overwrite`. Clients whose entries never name a ticket type go in
-`apps/api/client-tickets.toml`. Applying the sheet (`--review FILE --commit`) comes in part 4.
+`apps/api/client-tickets.toml`.
+
+Then rehearse the corrected sheet, and apply it once the rehearsal looks right:
+
+```
+uv run import-outlook --review E:\MyLocalDev\Jiak_calendaring\raw\jiak-operations-review.csv
+uv run import-outlook --review E:\MyLocalDev\Jiak_calendaring\raw\jiak-operations-review.csv --commit
+```
+
+Saving the sheet from Excel is fine: dates like `12/11/2026` (day/month/year) and times like `8:30` are read too.
+The take-over date is today unless you give `--today`. Rows before it go into a read-only history table
+(`past_bookings`). Rows from that date on are booked through the normal enquiry check, as if it were the start of
+that day. A booked row's Outlook event is linked to the booking and rewritten in the app's format; no second event
+is made. The command lists the rows it didn't book (doesn't fit, over 100 people, missing headcount or ticket, event
+no longer in Outlook) and stores nothing for them. Write `skip` in a row's `action` column to leave it out. Running
+it again is safe: rows already taken over are skipped. Without `--commit` nothing is stored. It uses `DATABASE_URL`
+like the API does. With `GRAPH_MODE` fake, an in-memory copy of the sheet's events stands in for `operations@`.
 
 Test data comes from `uv run anonymise-ics REAL.ics packages/graph/tests/fixtures/operations-anon.ics`, which
 replaces client names and keeps only the headcount and product lines of the bodies. Read its output before

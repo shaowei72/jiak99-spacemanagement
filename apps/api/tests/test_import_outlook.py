@@ -84,8 +84,8 @@ def test_nothing_to_look_at(tmp_path: Path, capsys: pytest.CaptureFixture[str]) 
     [
         ([], "Say where to read from"),
         (["--from-graph"], "--from-graph is not built yet"),
-        (["--review", "x.csv", "--commit"], "not built yet (Milestone 4 part 4)"),
-        (["--from-ics", "x.ics", "--commit"], "not built yet (Milestone 4 part 4)"),
+        (["--from-ics", "x.ics", "--commit"], "--commit goes with --review"),
+        (["--review", "missing.csv"], "Can't read missing.csv"),
         (["--from-ics", "x.ics", "--today", "12/11/2026"], "--today must be a date"),
         (["--from-ics", "missing.ics", "--today", "2026-11-10"], "Can't read missing.ics"),
         (["--from-ics", "x.ics", "--clients", "missing.toml"], "Can't read the client map"),
