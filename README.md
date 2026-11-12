@@ -32,8 +32,10 @@ app → Outlook, the one-off take-over, Outlook → app with the fail-back, the 
 Milestone 4L (the owner's laptop: SQLite safeguards, backups and restore, Windows scripts, tests on GitHub).
 Milestones 4 and 4L were merged into `main` on 2026-11-11.
 
-Next: Milestone 5, live Outlook and go-live: the M365 admin's setup, the real Microsoft Graph connection (tested on
-a test mailbox first), the completed review sheet and the real take-over.
+In progress: Milestone 5, live Outlook and go-live. Built (branch `m5-graph`): carrying review-sheet corrections
+over, the real Microsoft Graph connection with `uv run outlook-check`, and `import-outlook --from-graph`, all
+tested against stand-ins. Still to do: the M365 admin's setup, the trial on the test mailbox, the completed review
+sheet and the real take-over.
 
 **After pulling Milestone 3R:** run `uv run alembic upgrade head`. Stored zones can't become routes, so every
 existing group becomes unplanned (no route, not pinned) until the day is allocated again. Old example data may not
@@ -183,7 +185,7 @@ Remove-Item Env:TEST_DATABASE_URL
 `jiak_test` is a separate, empty database created when the volume is first made
 (`docker/postgres-init/`). The tests wipe it on every test, so never point `TEST_DATABASE_URL` at `jiak`.
 
-## Outlook (Milestone 4, in progress)
+## Outlook
 
 The Bookings calendar is the main calendar of the existing `operations@` mailbox (SPEC §5.4). Every booking change
 in the app updates its event there: subject like `PHE+CT · Tan family · 18 pax · ABDC · 11:00–14:00`, a fixed body
@@ -208,9 +210,35 @@ yellow banner on every page says when Outlook hasn't been updated or read for a 
 `AZURE_CLIENT_SECRET_EXPIRES=YYYY-MM-DD` in `.env`) when the app's Outlook password expires within 30 days.
 `http://127.0.0.1:8000/api/health` answers 200 when all is well and 503 otherwise, for an uptime checker.
 
-Until the real connection is built, `GRAPH_MODE` stays `fake` (the default): the app writes to an in-memory stand-in
-calendar that starts empty at every restart (the app then writes all its events into it afresh), so nothing shows
-up in Outlook yet. `GRAPH_MODE=real` stops with "not built yet".
+With `GRAPH_MODE` `fake` (the default) the app writes to an in-memory stand-in calendar that starts empty at every
+restart (the app then writes all its events into it afresh), so nothing shows up in Outlook. That is how
+development and the tests run.
+
+### Switching on the real Outlook connection
+
+Once the M365 admin has handed over the values (below, step 7), set them as Windows settings (on the laptop: guide
+step F3) and check the connection **on the test mailbox first**:
+
+| Setting | Value |
+| --- | --- |
+| `GRAPH_MODE` | `real` |
+| `AZURE_TENANT_ID`, `AZURE_CLIENT_ID` | from the admin |
+| `AZURE_CLIENT_SECRET` | from the admin, in person; never in a file in this repo |
+| `AZURE_CLIENT_SECRET_EXPIRES` | the secret's expiry date, e.g. `2027-11-30` |
+| `BOOKINGS_MAILBOX` | `jiak99-test@<domain>` while trying, then `operations@<domain>` |
+
+```
+uv run outlook-check                # signs in and reads the next 7 days
+uv run outlook-check --write-test   # also writes, reads back, changes and deletes one test event
+```
+
+Each step prints `OK` or `PROBLEM` with Microsoft's reason. `--write-test` adds "Jiak99 connection test (delete
+me)" for tomorrow 07:00 and deletes it again; use it on the test mailbox. Changing `BOOKINGS_MAILBOX` later is
+safe: the app sees it is another calendar and writes all its events there afresh.
+
+How the connection works: the app signs in as itself (no person's account), asks Outlook for Singapore times and
+plain-text bodies, and keeps its booking id in a hidden extension on each event. When Microsoft is busy it waits
+and tries again; other problems show in the warning banner and in the app's log.
 
 ### When the app is down (for staff)
 
@@ -230,8 +258,15 @@ with the reason at the top of the event: sort those out with the customer.
 
 ### Taking over the existing calendar (once)
 
-The calendar already holds the bookings typed by hand since 2026-10-08. Save it as an `.ics` file **outside this
-repo** (the repo is public; `.gitignore` refuses `*.ics` and `*-review.csv` anyway), then:
+The calendar already holds the bookings typed by hand since 2026-10-08. Once the real connection works, the
+take-over can read it straight from Outlook:
+
+```
+uv run import-outlook --from-graph --out E:\MyLocalDev\Jiak_calendaring\raw\jiak-operations-review.csv
+```
+
+(`--since 2026-10-01` to choose the first date; the default is a year back. `--carry-over` works here too.) Or save
+it as an `.ics` file **outside this repo** (the repo is public; `.gitignore` refuses `*.ics` and `*-review.csv` anyway), then:
 
 ```
 uv run import-outlook --from-ics E:\MyLocalDev\Jiak_calendaring\raw\jiak-operations.ics --today 2026-11-10
@@ -243,6 +278,18 @@ Excel): one row per booking-like event with date, times, people, ticket, client,
 Fill in the missing headcounts and ticket types there. An existing sheet is never overwritten (it may hold your
 corrections) unless you add `--overwrite`. Clients whose entries never name a ticket type go in
 `apps/api/client-tickets.toml`.
+
+You can start correcting a sheet early. Close to go-live, save a fresh `.ics` and carry your corrections over:
+
+```
+uv run import-outlook --from-ics E:\MyLocalDev\Jiak_calendaring\raw\jiak-operations-final.ics --carry-over E:\MyLocalDev\Jiak_calendaring\raw\jiak-operations-review.csv
+```
+
+Rows are matched by event id. Date and times come from the fresh export (an event moved in Outlook keeps its new
+time, with a note saying where it was). Headcounts, ticket, client, soft block, cancelled and a `skip` you wrote
+come from the earlier sheet. Where your earlier value and what Outlook says now disagree, your value is kept, the
+note says what Outlook says, and the row is marked `check by hand`. The command also counts events new since the
+earlier sheet and lists those gone from the calendar. Only the fresh sheet is then reviewed and applied.
 
 Then rehearse the corrected sheet, and apply it once the rehearsal looks right:
 

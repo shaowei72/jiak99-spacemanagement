@@ -107,34 +107,40 @@ It should print something like `uv 0.12.x`.
 
 ## Part B: Install the app
 
-### B1. Make the app folder ☐
+### B1. Choose the app folder ☐
 
-The app goes in `C:\Jiak99`, **not** in Documents or Desktop: OneDrive often syncs those, and syncing the app's
-files while it runs can damage the database.
+Choose where the app goes, e.g. `C:\Jiak99\app`. **Not** in Documents or Desktop: OneDrive often syncs those, and
+syncing the app's files while it runs causes trouble. Write the folder on the record sheet.
+
+These commands save it as a Windows setting for this account, `JIAK_APP_DIR`. Every command in this guide then
+uses `$env:JIAK_APP_DIR`, so they work whatever folder you chose. Change the first line if you chose another one:
 
 ```powershell
-New-Item -ItemType Directory -Force C:\Jiak99
-cd C:\Jiak99
+$app = "C:\Jiak99\app"
+[Environment]::SetEnvironmentVariable("JIAK_APP_DIR", $app, "User")
+$env:JIAK_APP_DIR = $app
+New-Item -ItemType Directory -Force (Split-Path $app)
 ```
 
 ### B2. Download the app ☐
 
 ```powershell
-git clone https://github.com/shaowei72/jiak99-spacemanagement app
-cd C:\Jiak99\app
+git clone https://github.com/shaowei72/jiak99-spacemanagement $env:JIAK_APP_DIR
+cd $env:JIAK_APP_DIR
 ```
 
-> **Installed before 2026-11-12?** Then the laptop is on the old branch `m4-outlook`. Switch it to `main` once:
+> **Installed before 2026-11-13?** Then `JIAK_APP_DIR` isn't set yet. Set it once, in the folder you installed
+> the app in (or run the setup script again, E2, which sets it):
 > ```powershell
-> cd C:\Jiak99\app
-> git checkout main
-> git pull
+> cd <your app folder>
+> [Environment]::SetEnvironmentVariable("JIAK_APP_DIR", (Get-Location).Path, "User")
+> $env:JIAK_APP_DIR = (Get-Location).Path
 > ```
 
 ### B3. Install what the app needs ☐
 
 ```powershell
-cd C:\Jiak99\app
+cd $env:JIAK_APP_DIR
 uv sync
 ```
 
@@ -163,7 +169,7 @@ It should print `sqlite:///C:/Users/<name>/AppData/Local/Jiak99/jiak99.db`.
 ### B5. Create the database ☐
 
 ```powershell
-cd C:\Jiak99\app
+cd $env:JIAK_APP_DIR
 uv run alembic upgrade head
 ```
 
@@ -178,7 +184,7 @@ It should print `True`.
 ### B6. Start the app ☐
 
 ```powershell
-cd C:\Jiak99\app
+cd $env:JIAK_APP_DIR
 uv run uvicorn jiak_api.main:app
 ```
 
@@ -206,7 +212,7 @@ Everything here is practice and is wiped at go-live.
 ### C1. Load the sample week (optional) ☐
 
 ```powershell
-cd C:\Jiak99\app
+cd $env:JIAK_APP_DIR
 uv run seed week
 ```
 
@@ -235,8 +241,8 @@ appear.
   the desktop (or the bookmark).
 - **By hand** (any time), in PowerShell:
   ```powershell
-  powershell -ExecutionPolicy Bypass -File C:\Jiak99\app\scripts\windows\start-jiak99.ps1
-  powershell -ExecutionPolicy Bypass -File C:\Jiak99\app\scripts\windows\stop-jiak99.ps1
+  powershell -ExecutionPolicy Bypass -File "$env:JIAK_APP_DIR\scripts\windows\start-jiak99.ps1"
+  powershell -ExecutionPolicy Bypass -File "$env:JIAK_APP_DIR\scripts\windows\stop-jiak99.ps1"
   ```
   Start does nothing if the app is already running. The app's messages go to
   `%LOCALAPPDATA%\Jiak99\logs` (one file per start, kept 30 days).
@@ -247,7 +253,7 @@ appear.
 When a new version is ready:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File C:\Jiak99\app\scripts\windows\update-jiak99.ps1
+powershell -ExecutionPolicy Bypass -File "$env:JIAK_APP_DIR\scripts\windows\update-jiak99.ps1"
 ```
 
 It makes a backup (after part E), stops the app, downloads the new version, installs it, brings the database up
@@ -262,6 +268,9 @@ app again with D1 and pass the message on.
 | The browser says the page can't be reached | The app isn't running: start it (D1). Check the address is `http://127.0.0.1:8000` |
 | `address already in use` / port 8000 busy | Another copy is already running. Stop it (D1), then start it again |
 | `$env:DATABASE_URL` prints nothing | Repeat B4 (or E1), then **open a new PowerShell window** |
+| `cd $env:JIAK_APP_DIR` fails, or `$env:JIAK_APP_DIR` prints nothing | Set it as in the note under B2, then **open a new PowerShell window** |
+| Update or setup stops: "Some of the app's files are missing (D) or changed (M)" | Run the `git restore .` it shows, then the script again. `git pull` alone doesn't bring a deleted file back |
+| A script file (e.g. `start-jiak99.ps1`) keeps disappearing | Antivirus may be removing it: **Windows Security → Virus & threat protection → Protection history**. If the app's script is listed, choose **Actions → Allow** (or **Restore**), then `git restore .` in the app folder |
 | The data looks empty after an update | Check `$env:DATABASE_URL`: the app may be using another database file |
 | "... is inside OneDrive" when starting | The database must not be in a OneDrive folder: repeat B4 |
 | Yellow bar: "Backup failed" or "No backup since ..." | Check OneDrive for Business is signed in and running (cloud icon by the clock), and that the backup folder exists |
@@ -294,7 +303,7 @@ personal OneDrive: the backups hold customer data.
 Stop the app if it runs in a window (Ctrl+C), then:
 
 ```powershell
-cd C:\Jiak99\app
+cd $env:JIAK_APP_DIR
 git pull
 powershell -ExecutionPolicy Bypass -File scripts\windows\setup-laptop.ps1
 ```
@@ -324,7 +333,7 @@ one per day for 30 days.
 A backup is only useful if it can be put back. Try it once now, with the practice data:
 
 ```powershell
-cd C:\Jiak99\app
+cd $env:JIAK_APP_DIR
 uv run backup
 powershell -ExecutionPolicy Bypass -File scripts\windows\stop-jiak99.ps1
 $newest = Get-ChildItem $env:JIAK_BACKUP_DIR -Filter "jiak99-*.db" | Sort-Object Name | Select-Object -Last 1
@@ -342,17 +351,60 @@ delete it once all is well. Write the date of this test on the record sheet.
 
 ## Part F: Go-live with Outlook (later, not yet possible)
 
-These steps need Milestone 5 (the real Outlook connection), which also needs the M365 admin. This guide
-will be updated with the exact commands for F3 and F4 then.
+These steps need the M365 admin's setup. F3 and F4 have their own sections below the table.
 
 | Step | What | Needs |
 | --- | --- | --- |
 | F1 | The M365 admin finishes the checklist in `README.md` ("What the Microsoft 365 admin will need to do") and hands over the app's Outlook settings | M365 admin |
-| F2 | Wipe the practice data: stop the app (D1); in `%LOCALAPPDATA%\Jiak99` delete `jiak99.db`, `jiak99.db-wal`, `jiak99.db-shm` and any `jiak99-replaced-*.db`; then `cd C:\Jiak99\app` and `uv run alembic upgrade head` | — |
-| F3 | Enter the Outlook settings on the laptop (`GRAPH_MODE=real` and the admin's values) | Milestone 5 |
-| F4 | Take over the existing calendar: a fresh review sheet (corrections carried over), rehearse, then `import-outlook --review ... --commit` | Milestone 5, the review sheet filled in |
+| F2 | Wipe the practice data: stop the app (D1); in `%LOCALAPPDATA%\Jiak99` delete `jiak99.db`, `jiak99.db-wal`, `jiak99.db-shm` and any `jiak99-replaced-*.db`; then `cd $env:JIAK_APP_DIR` and `uv run alembic upgrade head` | — |
+| F3 | Enter the Outlook settings on the laptop and check the connection, test mailbox first (below) | F1 |
+| F4 | Take over the existing calendar (below) | F3, the review sheet filled in |
 | F5 | Tell staff about "When the app is down" in `README.md` (typing bookings into Outlook) | — |
 | F6 | Start the app (D1) and start taking bookings in it | All of the above |
+
+### F3. The Outlook settings ☐
+
+In PowerShell, with the values from the admin. Type the secret yourself; don't paste it from an email or chat:
+
+```powershell
+[Environment]::SetEnvironmentVariable("AZURE_TENANT_ID", "<tenant id>", "User")
+[Environment]::SetEnvironmentVariable("AZURE_CLIENT_ID", "<client id>", "User")
+[Environment]::SetEnvironmentVariable("AZURE_CLIENT_SECRET", "<secret value>", "User")
+[Environment]::SetEnvironmentVariable("AZURE_CLIENT_SECRET_EXPIRES", "<expiry, e.g. 2027-11-30>", "User")
+[Environment]::SetEnvironmentVariable("BOOKINGS_MAILBOX", "jiak99-test@<domain>", "User")
+[Environment]::SetEnvironmentVariable("GRAPH_MODE", "real", "User")
+```
+
+**Open a new PowerShell window**, then check the connection to the test mailbox:
+
+```powershell
+cd $env:JIAK_APP_DIR
+uv run outlook-check --write-test
+```
+
+Every line should start with `OK`. A `PROBLEM` line gives Microsoft's reason: pass it on. Then look at the test
+calendar in Outlook: the test event is gone again. When all is well, switch to the real calendar and check it
+(read only):
+
+```powershell
+[Environment]::SetEnvironmentVariable("BOOKINGS_MAILBOX", "operations@<domain>", "User")
+```
+
+Open a new PowerShell window, `cd $env:JIAK_APP_DIR`, `uv run outlook-check`, then restart the app (D1: stop, then
+start) so it uses the new settings.
+
+### F4. Take over the existing calendar ☐
+
+```powershell
+cd $env:JIAK_APP_DIR
+uv run import-outlook --from-graph --out <folder outside the app>\operations-review.csv --carry-over <your corrected sheet>
+uv run import-outlook --review <folder outside the app>\operations-review.csv
+uv run import-outlook --review <folder outside the app>\operations-review.csv --commit
+```
+
+The first line writes a fresh review sheet with your corrections carried over (look at the rows marked `check by
+hand`). The second rehearses it (nothing stored); the third applies it. `README.md`, "Taking over the existing
+calendar", explains the sheet.
 
 ---
 
@@ -384,7 +436,7 @@ isn't legal advice.
 3. Run the setup script with `-RestoreNewest`. It puts the newest backup back **before** the app first starts
    (otherwise the app would back up an empty database first, and that would be the newest):
    ```powershell
-   cd C:\Jiak99\app
+   cd $env:JIAK_APP_DIR
    powershell -ExecutionPolicy Bypass -File scripts\windows\setup-laptop.ps1 -RestoreNewest
    ```
    Give the same name and the same backup folder as before.
@@ -422,10 +474,10 @@ Fill in by hand and keep with the business papers (not in the laptop bag).
 | Windows account used for the app | |
 | Disk encryption on (A2), date | |
 | Recovery key kept at (A3) | |
-| App folder | `C:\Jiak99\app` |
+| App folder (B1; also the setting `JIAK_APP_DIR`) | |
 | Database file | `%LOCALAPPDATA%\Jiak99\jiak99.db` |
 | Installed on (date) | |
-| Version installed (`git log -1 --oneline` in `C:\Jiak99\app`) | |
+| Version installed (`git log -1 --oneline` in the app folder) | |
 | M365 admin (name, how to reach) | |
 | Trial restore done (E4), date | |
 | Go-live date (part F) | |

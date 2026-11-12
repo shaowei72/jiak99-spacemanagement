@@ -23,6 +23,7 @@ Outlook (Microsoft 365) is the user layer. **Read `SPEC.md` before any work — 
 - Record any deviation from `SPEC.md` (stack, rule interpretation) in `DECISIONS.md` with a one-line reason.
 - If a rule is ambiguous, pick the option that keeps zones flexible and sales options widest, note it in
   `DECISIONS.md`, and carry on.
+- Update `docs/ARCHITECTURE.md` whenever a milestone adds or changes modules.
 
 ## Commands (create these in Milestone 1–2)
 - `uv sync` — install all workspace packages and dev tools
@@ -35,10 +36,15 @@ Outlook (Microsoft 365) is the user layer. **Read `SPEC.md` before any work — 
 - `uv run ruff check . && uv run ruff format --check . && uv run mypy` — lint, format, types
 - `uv run seed [busy-day | week | FILE] [--replace]` — load an example day file into the database
 - `docker compose up` — api (incl. web pages) + PostgreSQL
-- `uv run import-outlook --from-ics FILE [--today YYYY-MM-DD]` — take-over dry run: writes `<FILE>-review.csv` next to
-  the file, stores nothing (console script in `apps/api`)
+- `uv run import-outlook --from-ics FILE [--today YYYY-MM-DD] [--carry-over EARLIER.csv]` — take-over dry run: writes
+  `<FILE>-review.csv` next to the file, stores nothing; `--carry-over` copies corrections from an earlier sheet
+  (console script in `apps/api`)
 - `uv run import-outlook --review FILE [--commit] [--today YYYY-MM-DD]` — apply the corrected sheet: rehearsal
   without `--commit`; with it, bookings + `past_bookings` history, Outlook events taken over in place
+- `uv run import-outlook --from-graph --out FILE [--since YYYY-MM-DD] [--carry-over EARLIER.csv]` — the same dry run,
+  reading the calendar through Microsoft Graph (`GRAPH_MODE=real`)
+- `uv run outlook-check [--write-test]` — check the real Outlook connection (`--write-test` writes and deletes one
+  test event: test mailbox first)
 - `uv run anonymise-ics REAL.ics packages/graph/tests/fixtures/operations-anon.ics` — anonymised test copy (owner
   reads it before committing; never commit the real file)
 - `uv run backup [--to FOLDER]` — back up the SQLite database now; `uv run restore FILE` — put a backup back (app

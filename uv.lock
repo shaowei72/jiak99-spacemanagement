@@ -275,10 +275,14 @@ version = "0.1.0"
 source = { editable = "packages/graph" }
 dependencies = [
     { name = "engine" },
+    { name = "httpx" },
 ]
 
 [package.metadata]
-requires-dist = [{ name = "engine", editable = "packages/engine" }]
+requires-dist = [
+    { name = "engine", editable = "packages/engine" },
+    { name = "httpx", specifier = ">=0.28" },
+]
 
 [[package]]
 name = "h11"

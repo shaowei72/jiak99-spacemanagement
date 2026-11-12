@@ -24,6 +24,7 @@ class CalendarEvent:
     the calendar shows, so the take-over can find the event it read in the file. "" when unknown.
     `created` is when the event was made in Outlook, as sortable text ('2026-11-11T09:30:00Z'), so
     entries typed during an outage can be taken in oldest first. "" when unknown.
+    `all_day`: an all-day event (start 0, end a whole number of days); kept as it is when rewritten.
     """
 
     id: str
@@ -37,3 +38,4 @@ class CalendarEvent:
     created_by: str = ""
     ical_uid: str = ""
     created: str = ""
+    all_day: bool = False

@@ -13,9 +13,10 @@ from sqlalchemy import select
 from graph.fake import FakeGateway
 from graph.gateway import EventNotFound
 from graph.model import CalendarEvent
+from graph.real import GraphCalendar
 from jiak_api import models
 from jiak_api.clock import Now
-from jiak_api.config import AppConfig
+from jiak_api.config import AppConfig, load_config
 from jiak_api.db import Database
 from jiak_api.main import create_app
 from jiak_api.outlook_sync import make_gateway, sync_dates
@@ -231,10 +232,45 @@ def test_an_outlook_outage_does_not_stop_bookings(
     assert only_event(working).booking_id == booking["id"]
 
 
+def test_outlook_settings_come_from_the_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("AZURE_TENANT_ID", " t ")
+    monkeypatch.setenv("AZURE_CLIENT_ID", "c")
+    monkeypatch.setenv("AZURE_CLIENT_SECRET", "s3cret")
+    monkeypatch.setenv("BOOKINGS_MAILBOX", "jiak99-test@example.com")
+    config = load_config()
+    assert (config.azure_tenant_id, config.azure_client_id) == ("t", "c")
+    assert (config.azure_client_secret, config.bookings_mailbox) == (
+        "s3cret",
+        "jiak99-test@example.com",
+    )
+    assert "s3cret" not in repr(config)
+
+
 def test_fake_unless_graph_mode_is_real() -> None:
     assert isinstance(make_gateway(AppConfig(database_url="sqlite://")), FakeGateway)
-    with pytest.raises(NotImplementedError):
-        make_gateway(AppConfig(database_url="sqlite://", graph_mode="real"))
+    with pytest.raises(ValueError, match="GRAPH_MODE must be fake or real, not 'rael'"):
+        make_gateway(AppConfig(database_url="sqlite://", graph_mode="rael"))
+    with pytest.raises(ValueError, match="needs AZURE_CLIENT_SECRET, BOOKINGS_MAILBOX"):
+        make_gateway(
+            AppConfig(
+                database_url="sqlite://",
+                graph_mode="real",
+                azure_tenant_id="t",
+                azure_client_id="c",
+            )
+        )
+    real = make_gateway(
+        AppConfig(
+            database_url="sqlite://",
+            graph_mode="real",
+            azure_tenant_id="t",
+            azure_client_id="c",
+            azure_client_secret="s3cret",
+            bookings_mailbox="jiak99-test@example.com",
+        )
+    )
+    assert isinstance(real, GraphCalendar)  # made, but nothing sent to Microsoft yet
+    assert real.calendar_id() == "graph:jiak99-test@example.com"
 
 
 def test_cancelled_booking_whose_event_is_already_gone(
