@@ -338,7 +338,8 @@ PostgreSQL 17.
 
 A one-off job of about an hour, for Milestone 5 (the real Outlook connection, SPEC §5.4 and §6). Send the admin
 the link to this section. In the commands, replace `<domain>` with the company's email domain, `<owner>` with
-the owner's email address and `<client id>` with the app's ID from step 3.
+the owner's email address and `<client id>` with the app's ID from step 3. Steps 1–7 are needed; step 8 (a
+second registration for development, test mailbox only) is optional.
 
 The app needs **calendar access only**: no mail permissions, no sign-in set-up (on the owner's laptop nobody
 signs in to the app), no room mailboxes.
@@ -459,3 +460,63 @@ The IDs and mailbox addresses aren't secret. **The secret is**:
   written into this repository, a file in it, or a message to the developer;
 - before it expires, make a new one and give it to the owner the same way;
 - if the laptop is lost or stolen, delete it at once and make a new one (guide part G).
+
+### 8. Optional: a second registration for development, test mailbox only ☐
+
+Lets the developer try fixes against the real Microsoft Graph from a development laptop, on site or elsewhere,
+without the live laptop's secret ever leaving the live laptop. It reaches **only** `jiak99-test@`, which holds no
+customer data, so its secret may be given to the developer.
+
+1. **App registration**, as in step 3 but named `Jiak99 dev`. Note its **Application (client) ID**
+   (`<dev client id>` below; the tenant ID is the same). Secret description `Jiak99 dev laptop`, expiry **3 to 6
+   months**.
+2. **Limit it to the test mailbox**, using the same option as in step 4:
+
+   ```powershell
+   # Option A: application access policy, with a group that holds only the test mailbox
+   New-DistributionGroup -Name "Jiak99 dev mailboxes" -Alias jiak99-dev-mailboxes -Type Security `
+       -Members jiak99-test@<domain>
+   Set-DistributionGroup -Identity jiak99-dev-mailboxes -HiddenFromAddressListsEnabled $true
+   New-ApplicationAccessPolicy -AppId <dev client id> -PolicyScopeGroupId jiak99-dev-mailboxes@<domain> `
+       -AccessRight RestrictAccess -Description "Jiak99 dev: test calendar only"
+
+   # Option B: RBAC for Applications (step 3.2 skipped for this registration too;
+   # <dev object id> from Enterprise applications -> Jiak99 dev)
+   New-ServicePrincipal -AppId <dev client id> -ObjectId <dev object id> -DisplayName "Jiak99 dev"
+   New-ManagementScope -Name "Jiak99 dev mailbox" `
+       -RecipientRestrictionFilter "PrimarySmtpAddress -eq 'jiak99-test@<domain>'"
+   New-ManagementRoleAssignment -App <dev client id> -Role "Application Calendars.ReadWrite" `
+       -CustomResourceScope "Jiak99 dev mailbox"
+   ```
+
+3. **Check it**: the test mailbox only, and **not** `operations@`:
+
+   ```powershell
+   # Option A:
+   Test-ApplicationAccessPolicy -Identity jiak99-test@<domain> -AppId <dev client id>   # Granted
+   Test-ApplicationAccessPolicy -Identity operations@<domain> -AppId <dev client id>    # Denied
+   # Option B:
+   Test-ServicePrincipalAuthorization -Identity <dev client id> -Resource jiak99-test@<domain>  # InScope: True
+   Test-ServicePrincipalAuthorization -Identity <dev client id> -Resource operations@<domain>   # InScope: False
+   ```
+
+4. **Hand over** the dev client ID, the dev secret and its expiry date to the developer, in person or through a
+   password manager. Delete the dev secret when development is done, when it is no longer needed, or at once if
+   the development laptop is lost.
+
+Rules that keep it safe: never put real bookings into `jiak99-test@`, and never give `Jiak99 dev` access to any
+other mailbox. The categories of step 5 are already in the test mailbox.
+
+The developer uses it in **one PowerShell window only**, never as saved Windows settings, so every other window
+stays on the fake calendar:
+
+```powershell
+$env:GRAPH_MODE = "real"
+$env:AZURE_TENANT_ID = "<tenant id>"
+$env:AZURE_CLIENT_ID = "<dev client id>"
+$env:AZURE_CLIENT_SECRET = Read-Host "Dev secret"
+$env:BOOKINGS_MAILBOX = "jiak99-test@<domain>"
+uv run outlook-check --write-test
+```
+
+Close the window when done. Leave `DATABASE_URL` unset there, so the app uses the throwaway development database.
