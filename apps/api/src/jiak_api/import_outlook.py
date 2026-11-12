@@ -5,7 +5,7 @@
     uv run import-outlook --from-ics FRESH.ics --carry-over EARLIER-review.csv
     uv run import-outlook --review FILE              # rehearse the corrected sheet: store nothing
     uv run import-outlook --review FILE --commit     # apply it: bookings, history, Outlook events
-    uv run import-outlook --from-graph               # read operations@ itself (not built yet)
+    uv run import-outlook --from-graph --out review.csv   # read the calendar itself (GRAPH_MODE=real)
 
 The review sheet is written next to the .ics file (`<name>-review.csv`) unless `--out` says
 otherwise. It holds customer names, so keep it out of the repo. An existing sheet is never
@@ -13,6 +13,10 @@ overwritten (it may hold your corrections) unless you add `--overwrite`.
 
 `--carry-over` copies the corrections from an earlier sheet into the fresh one, matched by event
 id (see `graph.carryover`): start correcting early, export again close to go-live.
+
+`--from-graph` reads BOOKINGS_MAILBOX's calendar through Microsoft Graph instead of an .ics file
+(GRAPH_MODE=real and the admin's settings needed), from `--since` (default: a year before the
+take-over date) to 200 days after the take-over date. It writes the same sheet; `--out` is needed.
 
 `--review` uses DATABASE_URL like the API does, and the calendar GRAPH_MODE says. With the fake
 calendar (the default), an in-memory copy of the sheet's events stands in for operations@, so you
@@ -27,14 +31,15 @@ from pathlib import Path
 
 from sqlalchemy.engine import make_url
 
-from engine.dates import is_valid_date
+from engine.dates import add_days, is_valid_date
 from engine.text import plural
 from graph.carryover import CarryOverError, carry_over, read_earlier_sheet
 from graph.fake import FakeGateway
 from graph.gateway import GraphGateway
-from graph.ics import IcsError, parse_ics
+from graph.ics import IcsError, IcsEvent, parse_ics
 from graph.model import CalendarEvent
 from graph.oldstyle import ClientMapError, ClientRule, parse_client_map
+from graph.real import GraphError
 from graph.sheet import SheetError, SheetRow, read_sheet
 from graph.takeover import (
     ACTION_BOOK,
@@ -96,16 +101,8 @@ def read_csv_text(path: Path) -> str:
         return data.decode("cp1252", errors="replace")
 
 
-def dry_run(
-    ics_path: Path,
-    out_path: Path,
-    today: str,
-    rules: list[ClientRule],
-    overwrite: bool,
-    earlier_path: Path | None = None,
-) -> str:
-    """Read the .ics file, write the review sheet and return a summary to print. With
-    `earlier_path`, corrections on that earlier sheet are carried over."""
+def check_out_path(out_path: Path, overwrite: bool, earlier_path: Path | None) -> None:
+    """Refuse to write the sheet over an earlier one (it may hold corrections)."""
     if earlier_path is not None and earlier_path.resolve() == out_path.resolve():
         raise TakeOverError(
             f"--carry-over {earlier_path} is where the fresh sheet would go. "
@@ -116,15 +113,52 @@ def dry_run(
             f"{out_path} already exists (it may hold your corrections). "
             "Use --out for another file, or --overwrite to replace it."
         )
+
+
+def events_from_ics(ics_path: Path) -> list[IcsEvent]:
+    """The events in an .ics file saved from the calendar."""
     try:
         text = ics_path.read_text(encoding="utf-8")
     except OSError as error:
         raise TakeOverError(f"Can't read {ics_path}: {error.strerror}") from error
     try:
-        events = parse_ics(text)
+        return parse_ics(text)
     except IcsError as error:
         raise TakeOverError(f"{ics_path}: {error}") from error
 
+
+def events_from_graph(gateway: GraphGateway, first_date: str, last_date: str) -> list[IcsEvent]:
+    """The calendar's events from `first_date` to `last_date`, read through Microsoft Graph, in
+    the shape the review sheet is built from. The event id on the sheet is the iCalendar UID, as
+    for an .ics file, so sheets from either source match up."""
+    try:
+        events = gateway.list_events(first_date, last_date)
+    except GraphError as error:
+        raise TakeOverError(str(error)) from error
+    return [
+        IcsEvent(
+            uid=event.ical_uid or event.id,
+            date=event.date,
+            start=event.start,
+            end=event.end,
+            subject=event.subject,
+            body=event.body,
+            all_day=event.all_day,
+        )
+        for event in events
+    ]
+
+
+def dry_run(
+    events: list[IcsEvent],
+    source_name: str,
+    out_path: Path,
+    today: str,
+    rules: list[ClientRule],
+    earlier_path: Path | None = None,
+) -> str:
+    """Write the review sheet for `events` and return a summary to print. With `earlier_path`,
+    corrections on that earlier sheet are carried over."""
     review = build_review(events, today, rules)
     rows = review.rows
     carried_lines: list[str] = []
@@ -149,7 +183,7 @@ def dry_run(
     out_path.write_text(review_csv(rows), encoding="utf-8-sig", newline="")
 
     lines = [
-        f"Read {len(events)} events from {ics_path.name}: {len(rows)} look like bookings, "
+        f"Read {len(events)} events from {source_name}: {len(rows)} look like bookings, "
         f"{len(review.others)} others (meetings, site visits, ...) are left alone.",
         f"Take-over date {today}: events before it are history.",
         "",
@@ -221,11 +255,21 @@ def calendar_for(config: AppConfig, rows: list[SheetRow]) -> tuple[GraphGateway,
             "for operations@. Your real calendar is not touched."
         )
         return fake_calendar(rows), note
+    gateway = real_calendar(config)
+    return gateway, f"Calendar: {config.bookings_mailbox} in Outlook (GRAPH_MODE=real)."
+
+
+def real_calendar(config: AppConfig) -> GraphGateway:
+    """The real calendar, or a TakeOverError saying which setting is missing."""
+    if config.graph_mode != "real":
+        raise TakeOverError(
+            "--from-graph reads Outlook itself: set GRAPH_MODE=real and the M365 admin's values "
+            "(README.md, step 7). Or save the calendar as an .ics file and use --from-ics."
+        )
     try:
-        gateway = make_gateway(config)
-    except NotImplementedError as error:
+        return make_gateway(config)
+    except ValueError as error:
         raise TakeOverError(str(error)) from error
-    return gateway, "Calendar: operations@ in Outlook (GRAPH_MODE=real)."  # pragma: no cover
 
 
 def take_over_report(result: TakeOverResult, sheet: Path, today: str, notes: list[str]) -> str:
@@ -292,7 +336,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     source = parser.add_mutually_exclusive_group()
     source.add_argument("--from-ics", metavar="FILE", help="an .ics file saved from the calendar")
     source.add_argument(
-        "--from-graph", action="store_true", help="read the calendar itself (later)"
+        "--from-graph",
+        action="store_true",
+        help="read the calendar itself through Microsoft Graph (GRAPH_MODE=real)",
     )
     source.add_argument("--review", metavar="CSV", help="the corrected review sheet to apply")
     parser.add_argument("--out", metavar="CSV", help="where to write the review sheet")
@@ -302,6 +348,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         help="with --from-ics: copy the corrections from this earlier review sheet",
     )
     parser.add_argument("--today", metavar="YYYY-MM-DD", help="take-over date (default: today)")
+    parser.add_argument(
+        "--since",
+        metavar="YYYY-MM-DD",
+        help="with --from-graph: first date to read (default: a year before the take-over date)",
+    )
     parser.add_argument(
         "--clients",
         metavar="FILE",
@@ -316,14 +367,16 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         if args.commit and not args.review:
             raise TakeOverError("--commit goes with --review CSV (the corrected sheet).")
-        if args.carry_over and not args.from_ics:
-            raise TakeOverError("--carry-over goes with --from-ics FILE (the fresh export).")
-        if args.from_graph:
+        if args.carry_over and not (args.from_ics or args.from_graph):
+            raise TakeOverError("--carry-over goes with --from-ics FILE or --from-graph.")
+        if args.from_graph and not args.out:
+            raise TakeOverError("--from-graph needs --out CSV (where to write the review sheet).")
+        if args.since and not args.from_graph:
+            raise TakeOverError("--since goes with --from-graph.")
+        if not args.from_ics and not args.review and not args.from_graph:
             raise TakeOverError(
-                "--from-graph is not built yet (needs the real Graph gateway). Use --from-ics."
+                "Say where to read from: --from-ics FILE, --from-graph (or --review CSV)."
             )
-        if not args.from_ics and not args.review:
-            raise TakeOverError("Say where to read from: --from-ics FILE (or --review CSV).")
         today = args.today or singapore_now().today
         if not is_valid_date(today):
             raise TakeOverError(f"--today must be a date like 2026-11-12, not {today!r}.")
@@ -338,11 +391,23 @@ def main(argv: Sequence[str] | None = None) -> int:
             summary = apply_review(Path(args.review), today, now, load_config(), commit=args.commit)
         else:
             rules = load_client_map(Path(args.clients))
-            ics_path = Path(args.from_ics)
             earlier = Path(args.carry_over) if args.carry_over else None
-            summary = dry_run(
-                ics_path, review_path(ics_path, args.out), today, rules, args.overwrite, earlier
-            )
+            if args.from_graph:
+                since = args.since or add_days(today, -365)
+                if not is_valid_date(since):
+                    raise TakeOverError(f"--since must be a date like 2026-10-01, not {since!r}.")
+                out_path = Path(args.out)
+                check_out_path(out_path, args.overwrite, earlier)
+                config = load_config()
+                events = events_from_graph(real_calendar(config), since, add_days(today, 200))
+                source_name = f"{config.bookings_mailbox} ({since} to {add_days(today, 200)})"
+            else:
+                ics_path = Path(args.from_ics)
+                out_path = review_path(ics_path, args.out)
+                check_out_path(out_path, args.overwrite, earlier)
+                events = events_from_ics(ics_path)
+                source_name = ics_path.name
+            summary = dry_run(events, source_name, out_path, today, rules, earlier)
     except TakeOverError as error:
         print(f"import-outlook: {error}", file=sys.stderr)
         return 2

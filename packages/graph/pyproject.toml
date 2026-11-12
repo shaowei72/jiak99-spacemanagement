@@ -3,7 +3,7 @@ name = "graph"
 version = "0.1.0"
 description = "Outlook calendar access for the zone capacity app: gateway (real + fake) and event formats"
 requires-python = ">=3.13"
-dependencies = ["engine"]
+dependencies = ["engine", "httpx>=0.28"]
 
 [tool.uv.sources]
 engine = { workspace = true }

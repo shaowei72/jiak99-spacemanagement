@@ -29,6 +29,7 @@ from graph.fake import FakeGateway
 from graph.format import BookingInfo, booking_event, kept_text, visible_state
 from graph.gateway import EventNotFound, GraphGateway
 from graph.model import CalendarEvent
+from graph.real import GraphCalendar, GraphSettings
 from jiak_api import models
 from jiak_api.config import AppConfig
 from jiak_api.db import Database
@@ -37,13 +38,30 @@ log = logging.getLogger(__name__)
 
 
 def make_gateway(config: AppConfig) -> GraphGateway:
-    """The calendar to use: the in-memory fake unless GRAPH_MODE=real (CLAUDE.md)."""
-    if config.graph_mode == "real":
-        raise NotImplementedError(
-            "GRAPH_MODE=real: the real Microsoft Graph gateway comes in a later part of "
-            "Milestone 4. Leave GRAPH_MODE unset (or 'fake') for now."
+    """The calendar to use: the in-memory fake unless GRAPH_MODE=real (CLAUDE.md).
+    Raises ValueError for another GRAPH_MODE, or when a setting the real one needs is missing."""
+    if config.graph_mode == "fake":
+        return FakeGateway()
+    if config.graph_mode != "real":
+        raise ValueError(f"GRAPH_MODE must be fake or real, not {config.graph_mode!r}")
+    needed = {
+        "AZURE_TENANT_ID": config.azure_tenant_id,
+        "AZURE_CLIENT_ID": config.azure_client_id,
+        "AZURE_CLIENT_SECRET": config.azure_client_secret,
+        "BOOKINGS_MAILBOX": config.bookings_mailbox,
+    }
+    missing = [name for name, value in needed.items() if not value]
+    if missing:
+        raise ValueError(
+            f"GRAPH_MODE=real needs {', '.join(missing)} (from the M365 admin, README.md step 7)"
         )
-    return FakeGateway()
+    settings = GraphSettings(
+        tenant_id=config.azure_tenant_id,
+        client_id=config.azure_client_id,
+        client_secret=config.azure_client_secret,
+        mailbox=config.bookings_mailbox,
+    )
+    return GraphCalendar(settings)
 
 
 # --- what the calendar shows for a booking -----------------------------------------------------

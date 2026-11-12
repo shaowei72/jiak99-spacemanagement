@@ -351,17 +351,60 @@ delete it once all is well. Write the date of this test on the record sheet.
 
 ## Part F: Go-live with Outlook (later, not yet possible)
 
-These steps need Milestone 5 (the real Outlook connection), which also needs the M365 admin. This guide
-will be updated with the exact commands for F3 and F4 then.
+These steps need the M365 admin's setup. F3 and F4 have their own sections below the table.
 
 | Step | What | Needs |
 | --- | --- | --- |
 | F1 | The M365 admin finishes the checklist in `README.md` ("What the Microsoft 365 admin will need to do") and hands over the app's Outlook settings | M365 admin |
 | F2 | Wipe the practice data: stop the app (D1); in `%LOCALAPPDATA%\Jiak99` delete `jiak99.db`, `jiak99.db-wal`, `jiak99.db-shm` and any `jiak99-replaced-*.db`; then `cd $env:JIAK_APP_DIR` and `uv run alembic upgrade head` | — |
-| F3 | Enter the Outlook settings on the laptop (`GRAPH_MODE=real` and the admin's values) | Milestone 5 |
-| F4 | Take over the existing calendar: a fresh review sheet (corrections carried over), rehearse, then `import-outlook --review ... --commit` | Milestone 5, the review sheet filled in |
+| F3 | Enter the Outlook settings on the laptop and check the connection, test mailbox first (below) | F1 |
+| F4 | Take over the existing calendar (below) | F3, the review sheet filled in |
 | F5 | Tell staff about "When the app is down" in `README.md` (typing bookings into Outlook) | — |
 | F6 | Start the app (D1) and start taking bookings in it | All of the above |
+
+### F3. The Outlook settings ☐
+
+In PowerShell, with the values from the admin. Type the secret yourself; don't paste it from an email or chat:
+
+```powershell
+[Environment]::SetEnvironmentVariable("AZURE_TENANT_ID", "<tenant id>", "User")
+[Environment]::SetEnvironmentVariable("AZURE_CLIENT_ID", "<client id>", "User")
+[Environment]::SetEnvironmentVariable("AZURE_CLIENT_SECRET", "<secret value>", "User")
+[Environment]::SetEnvironmentVariable("AZURE_CLIENT_SECRET_EXPIRES", "<expiry, e.g. 2027-11-30>", "User")
+[Environment]::SetEnvironmentVariable("BOOKINGS_MAILBOX", "jiak99-test@<domain>", "User")
+[Environment]::SetEnvironmentVariable("GRAPH_MODE", "real", "User")
+```
+
+**Open a new PowerShell window**, then check the connection to the test mailbox:
+
+```powershell
+cd $env:JIAK_APP_DIR
+uv run outlook-check --write-test
+```
+
+Every line should start with `OK`. A `PROBLEM` line gives Microsoft's reason: pass it on. Then look at the test
+calendar in Outlook: the test event is gone again. When all is well, switch to the real calendar and check it
+(read only):
+
+```powershell
+[Environment]::SetEnvironmentVariable("BOOKINGS_MAILBOX", "operations@<domain>", "User")
+```
+
+Open a new PowerShell window, `cd $env:JIAK_APP_DIR`, `uv run outlook-check`, then restart the app (D1: stop, then
+start) so it uses the new settings.
+
+### F4. Take over the existing calendar ☐
+
+```powershell
+cd $env:JIAK_APP_DIR
+uv run import-outlook --from-graph --out <folder outside the app>\operations-review.csv --carry-over <your corrected sheet>
+uv run import-outlook --review <folder outside the app>\operations-review.csv
+uv run import-outlook --review <folder outside the app>\operations-review.csv --commit
+```
+
+The first line writes a fresh review sheet with your corrections carried over (look at the rows marked `check by
+hand`). The second rehearses it (nothing stored); the third applies it. `README.md`, "Taking over the existing
+calendar", explains the sheet.
 
 ---
 

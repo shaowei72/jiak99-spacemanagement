@@ -41,6 +41,10 @@ Outlook (Microsoft 365) is the user layer. **Read `SPEC.md` before any work — 
   (console script in `apps/api`)
 - `uv run import-outlook --review FILE [--commit] [--today YYYY-MM-DD]` — apply the corrected sheet: rehearsal
   without `--commit`; with it, bookings + `past_bookings` history, Outlook events taken over in place
+- `uv run import-outlook --from-graph --out FILE [--since YYYY-MM-DD] [--carry-over EARLIER.csv]` — the same dry run,
+  reading the calendar through Microsoft Graph (`GRAPH_MODE=real`)
+- `uv run outlook-check [--write-test]` — check the real Outlook connection (`--write-test` writes and deletes one
+  test event: test mailbox first)
 - `uv run anonymise-ics REAL.ics packages/graph/tests/fixtures/operations-anon.ics` — anonymised test copy (owner
   reads it before committing; never commit the real file)
 - `uv run backup [--to FOLDER]` — back up the SQLite database now; `uv run restore FILE` — put a backup back (app
