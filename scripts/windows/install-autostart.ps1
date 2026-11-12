@@ -1,7 +1,7 @@
 # Make the Jiak99 app start by itself when the owner signs in to Windows (SPEC 5.5), and put a
 # "Jiak99" shortcut on the desktop. Run it once, as the owner (no administrator needed).
 #
-#   powershell -ExecutionPolicy Bypass -File C:\Jiak99\app\scripts\windows\install-autostart.ps1
+#   powershell -ExecutionPolicy Bypass -File "$env:JIAK_APP_DIR\scripts\windows\install-autostart.ps1"
 #   ... -Remove        to take auto-start (and the shortcut) away again
 #
 # It adds a task "Jiak99" to Windows Task Scheduler. The task runs start-jiak99.ps1 hidden at sign-in,

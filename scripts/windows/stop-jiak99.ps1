@@ -2,7 +2,7 @@
 # started it. Hourly backups mean at most an hour's changes are only in the database itself when it
 # stops this way; the update script makes a backup first.
 #
-#   powershell -ExecutionPolicy Bypass -File C:\Jiak99\app\scripts\windows\stop-jiak99.ps1
+#   powershell -ExecutionPolicy Bypass -File "$env:JIAK_APP_DIR\scripts\windows\stop-jiak99.ps1"
 
 param(
     [int]$Port = 8000

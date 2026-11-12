@@ -1,7 +1,7 @@
 # Start the Jiak99 app on this laptop (SPEC 5.5). Safe to run twice: if the app already answers,
 # it does nothing. Auto-start (install-autostart.ps1) runs this script, hidden, when the owner signs in.
 #
-#   powershell -ExecutionPolicy Bypass -File C:\Jiak99\app\scripts\windows\start-jiak99.ps1
+#   powershell -ExecutionPolicy Bypass -File "$env:JIAK_APP_DIR\scripts\windows\start-jiak99.ps1"
 #
 # The app's messages go to %LOCALAPPDATA%\Jiak99\logs\app-<date>-<time>.log and .log.err
 # (one pair per start, kept 30 days).

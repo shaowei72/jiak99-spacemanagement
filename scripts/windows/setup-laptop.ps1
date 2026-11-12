@@ -1,12 +1,14 @@
 # Set up the Jiak99 app on the owner's laptop, after Git and uv are installed and the app is
-# downloaded to C:\Jiak99\app (docs/LAPTOP-INSTALL.md, parts A and B1-B2). Also used for a
+# downloaded to the app folder (docs/LAPTOP-INSTALL.md, parts A and B1-B2). Also used for a
 # replacement laptop (SPEC 5.6), with -RestoreNewest.
 #
-#   powershell -ExecutionPolicy Bypass -File C:\Jiak99\app\scripts\windows\setup-laptop.ps1
+#   powershell -ExecutionPolicy Bypass -File "$env:JIAK_APP_DIR\scripts\windows\setup-laptop.ps1"
 #   ... -RestoreNewest    on a replacement laptop: put the newest backup back before the app first starts
 #
-# It asks for the owner's name and the backup folder, then:
-#   - saves DATABASE_URL, JIAK_USER and JIAK_BACKUP_DIR as Windows settings for this account;
+# It checks that none of the app's files is missing or changed (e.g. removed by antivirus), asks for
+# the owner's name and the backup folder, then:
+#   - saves DATABASE_URL, JIAK_USER, JIAK_BACKUP_DIR and JIAK_APP_DIR (the app folder, where this
+#     script is) as Windows settings for this account;
 #   - installs what the app needs and creates the database (if there is none yet);
 #   - turns on auto-start and puts a Jiak99 shortcut on the desktop;
 #   - starts the app.
@@ -29,6 +31,25 @@ function Save-Setting([string]$Name, [string]$Value) {
     Set-Item -Path "Env:$Name" -Value $Value
     Write-Output "    $Name = $Value"
 }
+
+function Test-AppFiles {
+    # Stops if a file of the app is missing or changed on this laptop: 'git pull' does not bring
+    # such a file back. (The same check is in update-jiak99.ps1.)
+    $changed = @(git status --porcelain --untracked-files=no)
+    if ($LASTEXITCODE -ne 0) { throw "git could not check the app's files (see the message above)." }
+    if ($changed.Count -gt 0) {
+        Write-Output "Some of the app's files are missing (D) or changed (M) on this laptop:"
+        foreach ($line in $changed) { Write-Output "    $line" }
+        Write-Output "Put them back with:"
+        Write-Output "    cd `"$appFolder`""
+        Write-Output "    git restore ."
+        Write-Output "then run this script again. Nothing was changed. If a file keeps disappearing,"
+        Write-Output "see docs/LAPTOP-INSTALL.md, D3 (antivirus)."
+        exit 1
+    }
+}
+
+Test-AppFiles
 
 # --- the owner's name ---------------------------------------------------------------------------
 if (-not $OwnerName) {
@@ -63,6 +84,7 @@ Write-Output "Saving the settings:"
 Save-Setting "DATABASE_URL" ("sqlite:///" + ($databaseFile -replace '\\', '/'))
 Save-Setting "JIAK_USER" $OwnerName.Trim()
 Save-Setting "JIAK_BACKUP_DIR" $BackupFolder
+Save-Setting "JIAK_APP_DIR" $appFolder
 
 Write-Output "Installing what the app needs (a few minutes the first time):"
 uv sync
