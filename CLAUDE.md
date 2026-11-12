@@ -23,6 +23,7 @@ Outlook (Microsoft 365) is the user layer. **Read `SPEC.md` before any work — 
 - Record any deviation from `SPEC.md` (stack, rule interpretation) in `DECISIONS.md` with a one-line reason.
 - If a rule is ambiguous, pick the option that keeps zones flexible and sales options widest, note it in
   `DECISIONS.md`, and carry on.
+- Update `docs/ARCHITECTURE.md` whenever a milestone adds or changes modules.
 
 ## Commands (create these in Milestone 1–2)
 - `uv sync` — install all workspace packages and dev tools
