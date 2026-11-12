@@ -40,7 +40,7 @@ Dependencies only point inward: the engine knows nothing about the others, so it
 | Part | What it is | Key modules | Rules |
 |---|---|---|---|
 | **`packages/engine`** | The brain: can this group fit, which route through zones A–D, what's wasted, what to offer instead | `model` (data types), `rules` (tickets, zone sets), `assign` (route planner), `evaluate` / `enquiry` (the check), `alternatives`, `availability`, `metrics`, `timeline` | Standard library only, no I/O, no `datetime` (minutes + `YYYY-MM-DD` strings), `mypy --strict`, 100% test coverage |
-| **`packages/graph`** | Everything about calendar events, without a database | `model` (`CalendarEvent`), `gateway` (the `GraphGateway` protocol), `fake` (in-memory calendar), `format` (subject, body, notes, the "Before the app" divider), `template` (hand-typed `[PHE] 11:00 · 10A · Tan`), `oldstyle` + `ics` + `takeover` + `sheet` (one-off take-over), `anonymise` | Depends on the engine only; 100% coverage. The real Microsoft Graph gateway comes in Milestone 5 |
+| **`packages/graph`** | Everything about calendar events, without a database | `model` (`CalendarEvent`), `gateway` (the `GraphGateway` protocol), `fake` (in-memory calendar), `format` (subject, body, notes, the "Before the app" divider), `template` (hand-typed `[PHE] 11:00 · 10A · Tan`), `oldstyle` + `ics` + `takeover` + `sheet` + `carryover` (one-off take-over; `carryover` copies corrections from an earlier review sheet into a fresh one), `anonymise` | Depends on the engine only; 100% coverage. The real Microsoft Graph gateway comes in Milestone 5 |
 | **`apps/api`** | The application: web pages, API, database, Outlook jobs, admin commands | see the next table | FastAPI + Jinja2/HTMX pages, SQLAlchemy 2 + Alembic |
 | **`apps/cli`** | Try the engine from a terminal | `check` (one enquiry), `scenarios` (the scenario week) | Uses the engine only |
 
@@ -94,7 +94,7 @@ write anything still waiting ─▶ read today … +6 months from Outlook
 |---|---|---|
 | `uv run check`, `uv run scenarios` | cli | Try enquiries against example days |
 | `uv run seed` | api | Load example days into the database |
-| `uv run import-outlook` | api | The one-off calendar take-over (dry run, rehearsal, commit) |
+| `uv run import-outlook` | api | The one-off calendar take-over (dry run, `--carry-over` from an earlier sheet, rehearsal, commit) |
 | `uv run anonymise-ics` | api | Make an anonymised test copy of a calendar file |
 | `uv run backup`, `uv run restore` | api | Back up now; put a backup back |
 | `scripts\windows\*.ps1` | — | The owner's laptop: setup, start, stop, auto-start, update |

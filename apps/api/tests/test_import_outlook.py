@@ -89,11 +89,66 @@ def test_nothing_to_look_at(tmp_path: Path, capsys: pytest.CaptureFixture[str]) 
         (["--from-ics", "x.ics", "--today", "12/11/2026"], "--today must be a date"),
         (["--from-ics", "missing.ics", "--today", "2026-11-10"], "Can't read missing.ics"),
         (["--from-ics", "x.ics", "--clients", "missing.toml"], "Can't read the client map"),
+        (["--review", "x.csv", "--carry-over", "old.csv"], "--carry-over goes with --from-ics"),
     ],
 )
 def test_errors(args: list[str], message: str, capsys: pytest.CaptureFixture[str]) -> None:
     assert import_outlook.main(args) == 2
     assert message in capsys.readouterr().err
+
+
+def write_sheet(path: Path, rows: list[dict[str, str]]) -> None:
+    with path.open("w", encoding="utf-8-sig", newline="") as file:
+        writer = csv.DictWriter(file, fieldnames=list(rows[0]))
+        writer.writeheader()
+        writer.writerows(rows)
+
+
+def test_carry_over_copies_corrections_into_a_fresh_sheet(
+    ics_file: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    early = tmp_path / "early.csv"
+    args = ["--from-ics", str(ics_file), "--today", "2026-11-10"]
+    assert import_outlook.main([*args, "--out", str(early)]) == 0
+    rows = read_sheet(early)
+    rows[2]["people"] = "12"  # Kingfisher Travel: filled in by the owner
+    rows[2]["ticket"] = "CLASSIC"
+    rows[1]["people"] = "25"  # Sunshine TourGroup: Outlook says 30
+    rows.append({**rows[0], "event_id": "99", "client": "Deleted since"})
+    write_sheet(early, rows)
+    capsys.readouterr()
+
+    fresh = tmp_path / "fresh.csv"
+    assert import_outlook.main([*args, "--out", str(fresh), "--carry-over", str(early)]) == 0
+    rows = read_sheet(fresh)
+    assert [(r["people"], r["ticket"], r["action"]) for r in rows] == [
+        ("20", "PREMIUM", "history"),
+        ("25", "TINGKAT", "check by hand"),
+        ("12", "CLASSIC", "book"),
+    ]
+    assert rows[1]["notes"].startswith(
+        "kept from the earlier sheet: people 25 (Outlook now says 30)"
+    )
+    out = capsys.readouterr().out
+    assert "From the earlier sheet early.csv:" in out
+    assert "  corrections carried over   2" in out
+    assert "  disagree with Outlook now  1" in out
+    assert "  new since then             0" in out
+    assert "  no longer in the calendar  1\n    2026-10-20 10:00 Deleted since" in out
+
+
+def test_carry_over_problems(
+    ics_file: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    sheet = tmp_path / "sheet.csv"
+    old_text = "date,client\n2026-12-01,Tan\n"
+    sheet.write_text(old_text, encoding="utf-8")
+    args = ["--from-ics", str(ics_file), "--today", "2026-11-10", "--carry-over", str(sheet)]
+    assert import_outlook.main([*args, "--out", str(tmp_path / "fresh.csv")]) == 2
+    assert "no event_id column" in capsys.readouterr().err
+    assert import_outlook.main([*args, "--out", str(sheet), "--overwrite"]) == 2
+    assert "is where the fresh sheet would go" in capsys.readouterr().err
+    assert sheet.read_text(encoding="utf-8") == old_text
 
 
 def test_bad_files(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:

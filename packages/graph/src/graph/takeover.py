@@ -85,7 +85,7 @@ class Review:
     others: tuple[IcsEvent, ...]
 
 
-def _time_text(minutes: int) -> str:
+def time_text(minutes: int) -> str:
     """'10:00'; an end on a later day gets '+1d' etc."""
     days, minutes = divmod(minutes, MINUTES_PER_DAY)
     if days:
@@ -108,6 +108,14 @@ def _action(
     if people is None or not ticket:
         return ACTION_FILL_IN
     return ACTION_BOOK
+
+
+def action_for(row: ReviewRow) -> str:
+    """The proposed action for a row whose cells were changed (e.g. carried over from an
+    earlier sheet)."""
+    return _action(
+        row.when == "future", row.cancelled, not row.start, row.status, row.people, row.ticket
+    )
 
 
 def review_row(event: IcsEvent, today: str, rules: list[ClientRule]) -> ReviewRow | None:
@@ -149,8 +157,8 @@ def review_row(event: IcsEvent, today: str, rules: list[ClientRule]) -> ReviewRo
     return ReviewRow(
         event_id=event.uid,
         date=event.date,
-        start="" if event.all_day else _time_text(event.start),
-        end="" if event.all_day else _time_text(event.end),
+        start="" if event.all_day else time_text(event.start),
+        end="" if event.all_day else time_text(event.end),
         people=people,
         adults=headcount.adults if headcount is not None else None,
         children=headcount.children if headcount is not None else None,

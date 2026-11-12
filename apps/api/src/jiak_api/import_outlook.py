@@ -2,6 +2,7 @@
 
     uv run import-outlook --from-ics FILE            # dry run: write the review sheet, store nothing
     uv run import-outlook --from-ics FILE --out review.csv --today 2026-11-12
+    uv run import-outlook --from-ics FRESH.ics --carry-over EARLIER-review.csv
     uv run import-outlook --review FILE              # rehearse the corrected sheet: store nothing
     uv run import-outlook --review FILE --commit     # apply it: bookings, history, Outlook events
     uv run import-outlook --from-graph               # read operations@ itself (not built yet)
@@ -9,6 +10,9 @@
 The review sheet is written next to the .ics file (`<name>-review.csv`) unless `--out` says
 otherwise. It holds customer names, so keep it out of the repo. An existing sheet is never
 overwritten (it may hold your corrections) unless you add `--overwrite`.
+
+`--carry-over` copies the corrections from an earlier sheet into the fresh one, matched by event
+id (see `graph.carryover`): start correcting early, export again close to go-live.
 
 `--review` uses DATABASE_URL like the API does, and the calendar GRAPH_MODE says. With the fake
 calendar (the default), an in-memory copy of the sheet's events stands in for operations@, so you
@@ -25,6 +29,7 @@ from sqlalchemy.engine import make_url
 
 from engine.dates import is_valid_date
 from engine.text import plural
+from graph.carryover import CarryOverError, carry_over, read_earlier_sheet
 from graph.fake import FakeGateway
 from graph.gateway import GraphGateway
 from graph.ics import IcsError, parse_ics
@@ -79,10 +84,33 @@ def review_path(ics_path: Path, out: str | None) -> Path:
     return ics_path.with_name(f"{ics_path.stem}-review.csv")
 
 
+def read_csv_text(path: Path) -> str:
+    """A sheet saved by Excel, as 'CSV UTF-8' or, as plain 'CSV', in the Windows code page."""
+    try:
+        data = path.read_bytes()
+    except OSError as error:
+        raise TakeOverError(f"Can't read {path}: {error.strerror}") from error
+    try:
+        return data.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        return data.decode("cp1252", errors="replace")
+
+
 def dry_run(
-    ics_path: Path, out_path: Path, today: str, rules: list[ClientRule], overwrite: bool
+    ics_path: Path,
+    out_path: Path,
+    today: str,
+    rules: list[ClientRule],
+    overwrite: bool,
+    earlier_path: Path | None = None,
 ) -> str:
-    """Read the .ics file, write the review sheet and return a summary to print."""
+    """Read the .ics file, write the review sheet and return a summary to print. With
+    `earlier_path`, corrections on that earlier sheet are carried over."""
+    if earlier_path is not None and earlier_path.resolve() == out_path.resolve():
+        raise TakeOverError(
+            f"--carry-over {earlier_path} is where the fresh sheet would go. "
+            "Use --out to write the fresh sheet somewhere else."
+        )
     if out_path.exists() and not overwrite:
         raise TakeOverError(
             f"{out_path} already exists (it may hold your corrections). "
@@ -98,21 +126,41 @@ def dry_run(
         raise TakeOverError(f"{ics_path}: {error}") from error
 
     review = build_review(events, today, rules)
+    rows = review.rows
+    carried_lines: list[str] = []
+    if earlier_path is not None:
+        try:
+            earlier = read_earlier_sheet(read_csv_text(earlier_path))
+        except CarryOverError as error:
+            raise TakeOverError(f"{earlier_path}: {error}") from error
+        result = carry_over(rows, earlier)
+        rows = result.rows
+        carried_lines = [
+            "",
+            f"From the earlier sheet {earlier_path.name}:",
+            f"  corrections carried over   {len(result.carried)}",
+            f"  disagree with Outlook now  {len(result.disagree)} (marked 'check by hand')",
+            f"  new since then             {len(result.new)}",
+            f"  no longer in the calendar  {len(result.gone)}",
+        ]
+        for label in result.gone:
+            carried_lines.append(f"    {label}")
     # utf-8-sig: Excel then shows '·', '–' and accents correctly.
-    out_path.write_text(review_csv(review.rows), encoding="utf-8-sig", newline="")
+    out_path.write_text(review_csv(rows), encoding="utf-8-sig", newline="")
 
     lines = [
-        f"Read {len(events)} events from {ics_path.name}: {len(review.rows)} look like bookings, "
+        f"Read {len(events)} events from {ics_path.name}: {len(rows)} look like bookings, "
         f"{len(review.others)} others (meetings, site visits, ...) are left alone.",
         f"Take-over date {today}: events before it are history.",
         "",
         "Proposed actions:",
     ]
-    for action, number in count_actions(review.rows).items():
+    for action, number in count_actions(rows).items():
         lines.append(f"  {action:<18} {number}")
+    lines.extend(carried_lines)
 
     to_look_at = [
-        row for row in review.rows if row.action not in (ACTION_BOOK, ACTION_HISTORY, ACTION_SKIP)
+        row for row in rows if row.action not in (ACTION_BOOK, ACTION_HISTORY, ACTION_SKIP)
     ]
     if to_look_at:
         lines.append("")
@@ -136,16 +184,8 @@ def dry_run(
 
 
 def load_sheet(path: Path) -> list[SheetRow]:
-    """Read the corrected sheet. Excel saves it as 'CSV UTF-8' or, as plain 'CSV', in the
-    Windows code page; both are read."""
-    try:
-        data = path.read_bytes()
-    except OSError as error:
-        raise TakeOverError(f"Can't read {path}: {error.strerror}") from error
-    try:
-        text = data.decode("utf-8-sig")
-    except UnicodeDecodeError:
-        text = data.decode("cp1252", errors="replace")
+    """Read the corrected sheet (see `read_csv_text` for the file formats)."""
+    text = read_csv_text(path)
     try:
         return read_sheet(text)
     except SheetError as error:
@@ -256,6 +296,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     source.add_argument("--review", metavar="CSV", help="the corrected review sheet to apply")
     parser.add_argument("--out", metavar="CSV", help="where to write the review sheet")
+    parser.add_argument(
+        "--carry-over",
+        metavar="CSV",
+        help="with --from-ics: copy the corrections from this earlier review sheet",
+    )
     parser.add_argument("--today", metavar="YYYY-MM-DD", help="take-over date (default: today)")
     parser.add_argument(
         "--clients",
@@ -271,6 +316,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         if args.commit and not args.review:
             raise TakeOverError("--commit goes with --review CSV (the corrected sheet).")
+        if args.carry_over and not args.from_ics:
+            raise TakeOverError("--carry-over goes with --from-ics FILE (the fresh export).")
         if args.from_graph:
             raise TakeOverError(
                 "--from-graph is not built yet (needs the real Graph gateway). Use --from-ics."
@@ -292,8 +339,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         else:
             rules = load_client_map(Path(args.clients))
             ics_path = Path(args.from_ics)
+            earlier = Path(args.carry_over) if args.carry_over else None
             summary = dry_run(
-                ics_path, review_path(ics_path, args.out), today, rules, args.overwrite
+                ics_path, review_path(ics_path, args.out), today, rules, args.overwrite, earlier
             )
     except TakeOverError as error:
         print(f"import-outlook: {error}", file=sys.stderr)

@@ -244,6 +244,18 @@ Fill in the missing headcounts and ticket types there. An existing sheet is neve
 corrections) unless you add `--overwrite`. Clients whose entries never name a ticket type go in
 `apps/api/client-tickets.toml`.
 
+You can start correcting a sheet early. Close to go-live, save a fresh `.ics` and carry your corrections over:
+
+```
+uv run import-outlook --from-ics E:\MyLocalDev\Jiak_calendaringaw\jiak-operations-final.ics --carry-over E:\MyLocalDev\Jiak_calendaringaw\jiak-operations-review.csv
+```
+
+Rows are matched by event id. Date and times come from the fresh export (an event moved in Outlook keeps its new
+time, with a note saying where it was). Headcounts, ticket, client, soft block, cancelled and a `skip` you wrote
+come from the earlier sheet. Where your earlier value and what Outlook says now disagree, your value is kept, the
+note says what Outlook says, and the row is marked `check by hand`. The command also counts events new since the
+earlier sheet and lists those gone from the calendar. Only the fresh sheet is then reviewed and applied.
+
 Then rehearse the corrected sheet, and apply it once the rehearsal looks right:
 
 ```

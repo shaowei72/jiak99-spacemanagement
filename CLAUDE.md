@@ -36,8 +36,9 @@ Outlook (Microsoft 365) is the user layer. **Read `SPEC.md` before any work — 
 - `uv run ruff check . && uv run ruff format --check . && uv run mypy` — lint, format, types
 - `uv run seed [busy-day | week | FILE] [--replace]` — load an example day file into the database
 - `docker compose up` — api (incl. web pages) + PostgreSQL
-- `uv run import-outlook --from-ics FILE [--today YYYY-MM-DD]` — take-over dry run: writes `<FILE>-review.csv` next to
-  the file, stores nothing (console script in `apps/api`)
+- `uv run import-outlook --from-ics FILE [--today YYYY-MM-DD] [--carry-over EARLIER.csv]` — take-over dry run: writes
+  `<FILE>-review.csv` next to the file, stores nothing; `--carry-over` copies corrections from an earlier sheet
+  (console script in `apps/api`)
 - `uv run import-outlook --review FILE [--commit] [--today YYYY-MM-DD]` — apply the corrected sheet: rehearsal
   without `--commit`; with it, bookings + `past_bookings` history, Outlook events taken over in place
 - `uv run anonymise-ics REAL.ics packages/graph/tests/fixtures/operations-anon.ics` — anonymised test copy (owner
